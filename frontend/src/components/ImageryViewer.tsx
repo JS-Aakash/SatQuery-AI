@@ -525,6 +525,8 @@ export const ImageryViewer: React.FC<ImageryViewerProps> = ({
                     })}
                   </svg>
                 )}
+              </div>
+            </div>
           )}
         </div>
       </div>

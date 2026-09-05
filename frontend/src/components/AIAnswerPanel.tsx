@@ -458,8 +458,9 @@ export const AIAnswerPanel: React.FC<AIAnswerPanelProps> = ({
           <div className="space-y-2.5 relative before:absolute before:left-3 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-800">
             {analysis.execution_trace.map((step) => {
               const isDetailsOpen = expandedStepId === step.step_id;
-              const isSuccess = step.status === "completed" || step.status === "COMPLETED";
-              const isFailed = step.status === "failed" || step.status === "FAILED";
+              const statusLower = (step.status || "").toLowerCase();
+              const isSuccess = statusLower === "completed";
+              const isFailed = statusLower === "failed";
 
               return (
                 <div key={step.step_id} className="relative pl-7 text-xs">

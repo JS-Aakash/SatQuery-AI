@@ -184,6 +184,9 @@ class GeoChatAdapter(RemoteSensingVQA, RemoteSensingCaptioning, RemoteSensingGro
 
             # 2. Load Tokenizer & CLIP Image Processor
             self._tokenizer = AutoTokenizer.from_pretrained(self.model_path, use_fast=False)
+            if self._tokenizer.pad_token is None:
+                self._tokenizer.pad_token = self._tokenizer.eos_token
+                self._tokenizer.pad_token_id = self._tokenizer.eos_token_id
             self._image_processor = CLIPImageProcessor.from_pretrained("openai/clip-vit-large-patch14-336")
 
             # 3. Load Multimodal Projector & Vision Tower from shard 2
@@ -393,11 +396,13 @@ class GeoChatAdapter(RemoteSensingVQA, RemoteSensingCaptioning, RemoteSensingGro
             return generated_text
         else:
             prompt = f"USER: {prompt_text} ASSISTANT:"
-            inputs = self._tokenizer(prompt, return_tensors="pt").to(device)
+            inputs = self._tokenizer(prompt, return_tensors="pt")
+            input_ids = inputs["input_ids"].to(device)
+            attention_mask = inputs.get("attention_mask", torch.ones_like(input_ids)).to(device)
             with torch.inference_mode():
                 out = self._model.generate(
-                    **inputs,
-                    attention_mask=inputs.get("attention_mask"),
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
                     max_new_tokens=max_new_tokens,
                     do_sample=False,
                     pad_token_id=self._tokenizer.pad_token_id or self._tokenizer.eos_token_id
