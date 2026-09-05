@@ -294,7 +294,7 @@ export const ImageryViewer: React.FC<ImageryViewerProps> = ({
               <img
                 src={imageBUrl}
                 alt={imageBName || "Image B"}
-                className="absolute inset-0 w-full h-full object-cover pointer-events-none select-none"
+                className="absolute inset-0 w-full h-full object-contain pointer-events-none select-none"
                 draggable={false}
               />
               <div className="absolute bottom-3 right-3 px-2 py-1 rounded bg-slate-900/90 text-cyan-300 font-mono text-[10px] border border-slate-700 pointer-events-none select-none">
@@ -309,7 +309,7 @@ export const ImageryViewer: React.FC<ImageryViewerProps> = ({
                 <img
                   src={imageAUrl}
                   alt={imageAName}
-                  className="absolute inset-0 w-full h-full object-cover pointer-events-none select-none"
+                  className="absolute inset-0 w-full h-full object-contain pointer-events-none select-none"
                   draggable={false}
                 />
                 <div className="absolute bottom-3 left-3 px-2 py-1 rounded bg-slate-900/90 text-emerald-300 font-mono text-[10px] border border-slate-700 pointer-events-none select-none">
@@ -327,7 +327,7 @@ export const ImageryViewer: React.FC<ImageryViewerProps> = ({
                     <img
                       src={changeMap.change_mask_url}
                       alt="Change Mask"
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-contain"
                     />
                   ) : (
                     <svg className="w-full h-full" viewBox="0 0 800 600">
@@ -417,14 +417,14 @@ export const ImageryViewer: React.FC<ImageryViewerProps> = ({
           ) : comparisonMode === "side-by-side" && imageBUrl ? (
             /* Case 2: Side by Side Dual View */
             <div className="grid grid-cols-2 gap-3 w-full h-full max-w-[940px] max-h-[580px] p-4">
-              <div className="relative rounded border border-slate-800 overflow-hidden">
-                <img src={imageAUrl} alt={imageAName} className="w-full h-full object-cover" draggable={false} />
+              <div className="relative rounded border border-slate-800 overflow-hidden flex items-center justify-center bg-slate-950">
+                <img src={imageAUrl} alt={imageAName} className="w-full h-full object-contain" draggable={false} />
                 <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-slate-900/90 text-emerald-400 font-mono text-[10px] border border-slate-700">
                   {imageAName}
                 </div>
               </div>
-              <div className="relative rounded border border-slate-800 overflow-hidden">
-                <img src={imageBUrl} alt={imageBName || "Image B"} className="w-full h-full object-cover" draggable={false} />
+              <div className="relative rounded border border-slate-800 overflow-hidden flex items-center justify-center bg-slate-950">
+                <img src={imageBUrl} alt={imageBName || "Image B"} className="w-full h-full object-contain" draggable={false} />
                 <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-slate-900/90 text-cyan-400 font-mono text-[10px] border border-slate-700">
                   {imageBName || "Observation B"}
                 </div>
@@ -432,99 +432,99 @@ export const ImageryViewer: React.FC<ImageryViewerProps> = ({
             </div>
           ) : (
             /* Case 3: Single Primary Image with SVG Overlays */
-            <div className="relative w-full h-full max-w-[860px] max-h-[580px] aspect-[4/3] rounded-md overflow-hidden border border-slate-800 shadow-2xl">
-              <img
-                src={imageAUrl}
-                alt={imageAName}
-                className="w-full h-full object-cover"
-                draggable={false}
-              />
+            <div className="relative w-full h-full max-w-[860px] max-h-[580px] rounded-md overflow-hidden border border-slate-800 shadow-2xl flex items-center justify-center bg-[#070b14]">
+              <div className="relative w-full h-full flex items-center justify-center">
+                <img
+                  src={imageAUrl}
+                  alt={imageAName}
+                  className="w-full h-full object-contain pointer-events-none select-none"
+                  draggable={false}
+                />
 
-              {/* Change Map Heatmap Overlay */}
-              {showChangeMap && changeMap?.has_change && (
-                <div
-                  className="absolute inset-0 pointer-events-none transition-opacity duration-150 z-10"
-                  style={{ opacity: changeMapOpacity }}
-                >
-                  {changeMap.change_mask_url ? (
-                    <img
-                      src={changeMap.change_mask_url}
-                      alt="Change Mask"
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <svg className="w-full h-full" viewBox="0 0 800 600">
-                      <rect x="60" y="60" width="300" height="250" fill="#f59e0b" opacity="0.6" stroke="#fbbf24" strokeWidth="2" />
-                      <path d="M 250,450 Q 250,340 420,340 Q 590,340 590,450 Q 590,560 420,560 Q 250,560 250,450 Z" fill="#ef4444" opacity="0.5" />
-                      <path d="M 20,310 Q 300,330 780,360" stroke="#06b6d4" strokeWidth="10" fill="none" opacity="0.8" />
-                    </svg>
-                  )}
-                </div>
-              )}
+                {/* Change Map Heatmap Overlay */}
+                {showChangeMap && changeMap?.has_change && (
+                  <div
+                    className="absolute inset-0 pointer-events-none transition-opacity duration-150 z-10"
+                    style={{ opacity: changeMapOpacity }}
+                  >
+                    {changeMap.change_mask_url ? (
+                      <img
+                        src={changeMap.change_mask_url}
+                        alt="Change Mask"
+                        className="w-full h-full object-contain"
+                      />
+                    ) : (
+                      <svg className="w-full h-full" viewBox="0 0 800 600">
+                        <rect x="60" y="60" width="300" height="250" fill="#f59e0b" opacity="0.6" stroke="#fbbf24" strokeWidth="2" />
+                        <path d="M 250,450 Q 250,340 420,340 Q 590,340 590,450 Q 590,560 420,560 Q 250,560 250,450 Z" fill="#ef4444" opacity="0.5" />
+                        <path d="M 20,310 Q 300,330 780,360" stroke="#06b6d4" strokeWidth="10" fill="none" opacity="0.8" />
+                      </svg>
+                    )}
+                  </div>
+                )}
 
-              {/* Text-Guided Grounding Bounding Boxes Overlay */}
-              {showGrounding && groundingBoxes.length > 0 && (
-                <svg className="absolute inset-0 w-full h-full pointer-events-auto" viewBox="0 0 100 100" preserveAspectRatio="none">
-                  {groundingBoxes.map((gb) => {
-                    const [ymin, xmin, ymax, xmax] = gb.box;
-                    const isHovered = activeBoxId === gb.id;
-                    const isSelected = selectedBoxId === gb.id;
-                    const isFocal = isHovered || isSelected;
-                    const strokeColor = gb.color || "#10b981";
+                {/* Text-Guided Grounding Bounding Boxes Overlay */}
+                {showGrounding && groundingBoxes.length > 0 && (
+                  <svg className="absolute inset-0 w-full h-full pointer-events-auto" viewBox="0 0 100 100" preserveAspectRatio="none">
+                    {groundingBoxes.map((gb) => {
+                      const [ymin, xmin, ymax, xmax] = gb.box;
+                      const isHovered = activeBoxId === gb.id;
+                      const isSelected = selectedBoxId === gb.id;
+                      const isFocal = isHovered || isSelected;
+                      const strokeColor = gb.color || "#10b981";
 
-                    return (
-                      <g
-                        key={gb.id}
-                        onMouseEnter={() => {
-                          setActiveBoxId(gb.id);
-                          onSelectBox?.(gb.id);
-                        }}
-                        onMouseLeave={() => {
-                          setActiveBoxId(null);
-                        }}
-                        onClick={() => onSelectBox?.(isSelected ? null : gb.id)}
-                        className="cursor-pointer group"
-                      >
-                        <rect
-                          x={xmin}
-                          y={ymin}
-                          width={xmax - xmin}
-                          height={ymax - ymin}
-                          fill={isFocal ? "rgba(16, 185, 129, 0.28)" : "rgba(16, 185, 129, 0.08)"}
-                          stroke={isFocal ? "#34d399" : strokeColor}
-                          strokeWidth={isFocal ? "0.9" : "0.5"}
-                          strokeDasharray={isFocal ? undefined : "1.5 1"}
-                          className="transition-all duration-150"
-                        />
-                        {/* Text Tag */}
-                        <g transform={`translate(${xmin}, ${Math.max(3, ymin - 1)})`}>
+                      return (
+                        <g
+                          key={gb.id}
+                          onMouseEnter={() => {
+                            setActiveBoxId(gb.id);
+                            onSelectBox?.(gb.id);
+                          }}
+                          onMouseLeave={() => {
+                            setActiveBoxId(null);
+                          }}
+                          onClick={() => onSelectBox?.(isSelected ? null : gb.id)}
+                          className="cursor-pointer group"
+                        >
                           <rect
-                            x="0"
-                            y="-2.5"
-                            width={gb.label.length * 1.4 + 9}
-                            height="3.5"
-                            fill={isFocal ? "#064e3b" : "#0b1322"}
+                            x={xmin}
+                            y={ymin}
+                            width={xmax - xmin}
+                            height={ymax - ymin}
+                            fill={isFocal ? "rgba(16, 185, 129, 0.28)" : "rgba(16, 185, 129, 0.08)"}
                             stroke={isFocal ? "#34d399" : strokeColor}
-                            strokeWidth={isFocal ? "0.5" : "0.3"}
-                            rx="0.5"
+                            strokeWidth={isFocal ? "0.9" : "0.5"}
+                            strokeDasharray={isFocal ? undefined : "1.5 1"}
+                            className="transition-all duration-150"
                           />
-                          <text
-                            x="1"
-                            y="0"
-                            fill="#f8fafc"
-                            fontSize="2.2"
-                            fontFamily="monospace"
-                            fontWeight="bold"
-                          >
-                            {gb.label} ({Math.round(gb.confidence * 100)}%)
-                          </text>
+                          {/* Text Tag */}
+                          <g transform={`translate(${xmin}, ${Math.max(3, ymin - 1)})`}>
+                            <rect
+                              x="0"
+                              y="-2.5"
+                              width={gb.label.length * 1.4 + 9}
+                              height="3.5"
+                              fill={isFocal ? "#064e3b" : "#0b1322"}
+                              stroke={isFocal ? "#34d399" : strokeColor}
+                              strokeWidth={isFocal ? "0.5" : "0.3"}
+                              rx="0.5"
+                            />
+                            <text
+                              x="1"
+                              y="0"
+                              fill="#f8fafc"
+                              fontSize="2.2"
+                              fontFamily="monospace"
+                              fontWeight="bold"
+                            >
+                              {gb.label} ({Math.round(gb.confidence * 100)}%)
+                            </text>
+                          </g>
                         </g>
-                      </g>
-                    );
-                  })}
-                </svg>
-              )}
-            </div>
+                      );
+                    })}
+                  </svg>
+                )}
           )}
         </div>
       </div>

@@ -101,8 +101,11 @@ Desktop.ini
 *.swo
 *~
 
-# --- Temporary Scratch Scripts ---
+# --- Temporary Scratch Scripts & Data Cache ---
 scratch_*.py
 scratch/
 temp/
 tmp/
+data/
+data/satellite_cache/
+

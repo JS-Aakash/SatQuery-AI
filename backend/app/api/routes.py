@@ -728,24 +728,113 @@ def get_evaluation_metrics():
 
 @router.post("/satellite/search")
 def search_satellite_imagery(data: dict):
-    """Queries satellite scenes for given AOI, dates, and sensors."""
-    aoi_coords = data.get("aoi_coordinates")
+    """
+    Module 7: Copernicus STAC & Sentinel Hub Catalog Search.
+    Queries Sentinel-2 MSI and Sentinel-1 SAR imagery with intelligent multi-criteria ranking.
+    """
+    from satellite import (
+        CatalogSearchEngine,
+        CatalogSearchQuery,
+        SceneSelector,
+        GeocodingService,
+        SatelliteSensor,
+    )
+
+    location_name = data.get("location_name") or data.get("location") or "Chennai, India"
+    bbox = data.get("bbox")
+    if not bbox and data.get("aoi_coordinates"):
+        coords = data.get("aoi_coordinates")
+        if len(coords) >= 4:
+            lons = [c[0] for c in coords]
+            lats = [c[1] for c in coords]
+            bbox = [min(lons), min(lats), max(lons), max(lats)]
+
+    if not bbox:
+        loc_formatted, resolved_bbox = GeocodingService.resolve_location(location_name)
+        bbox = resolved_bbox
+        location_name = loc_formatted
+
     start_date = data.get("start_date", "2024-01-01")
     end_date = data.get("end_date", "2026-01-01")
-    sensors = data.get("sensors", ["Sentinel-2", "Sentinel-1"])
+    sensors_req = data.get("sensors", ["Sentinel-2"])
+    if isinstance(sensors_req, str):
+        sensors_req = [sensors_req]
+
+    sensor_enum = SatelliteSensor.SENTINEL_1_SAR if any("1" in s or "SAR" in s for s in sensors_req) else SatelliteSensor.SENTINEL_2_OPTICAL
     cloud_cover = float(data.get("cloud_coverage", 20.0))
 
-    scenes = satellite_service.search_scenes(
-        aoi_coords=aoi_coords,
+    engine = CatalogSearchEngine()
+    query = CatalogSearchQuery(
+        location_name=location_name,
+        bbox=bbox,
         start_date=start_date,
         end_date=end_date,
-        sensors=sensors,
-        max_cloud_cover=cloud_cover
+        sensor=sensor_enum,
+        max_cloud_coverage=cloud_cover,
+        limit=int(data.get("limit", 8))
     )
-    area = satellite_service.calculate_aoi_area(aoi_coords) if aoi_coords else 0.0
+
+    result = engine.search(query)
+    # Apply intelligent multi-criteria ranking and justification
+    ranked_products = SceneSelector.rank_and_select(result.products, target_date=start_date)
+
+    # Compute AOI area in sq km
+    aoi_coords = data.get("aoi_coordinates")
+    if not aoi_coords and bbox:
+        aoi_coords = [
+            [bbox[0], bbox[1]],
+            [bbox[2], bbox[1]],
+            [bbox[2], bbox[3]],
+            [bbox[0], bbox[3]],
+            [bbox[0], bbox[1]]
+        ]
+    
+    aoi_area = satellite_service.calculate_aoi_area(aoi_coords) if aoi_coords else 0.0
 
     return {
-        "count": len(scenes),
-        "aoi_area_sq_km": area,
-        "scenes": scenes
+        "count": len(ranked_products),
+        "location_name": location_name,
+        "bbox": bbox,
+        "aoi_area_sq_km": aoi_area,
+        "aoi_coordinates": aoi_coords,
+        "provider_name": result.provider_name,
+        "execution_time_ms": result.execution_time_ms,
+        "scenes": [p.model_dump() for p in ranked_products]
     }
+
+
+@router.post("/satellite/auto-query")
+def execute_auto_location_query(request_data: dict):
+    """
+    Module 7: Automated Earth Observation Data Retrieval and Analysis.
+    Takes a natural-language query (e.g. 'Compare Chennai between January 2024 and January 2026')
+    and executes: Location -> AOI -> Search -> Multi-Criteria Selection -> Download -> Agent Synthesis.
+    """
+    from satellite import auto_eo_pipeline, AutoLocationQueryRequest
+
+    req = AutoLocationQueryRequest(
+        query=request_data.get("query", "Compare Chennai between January 2024 and January 2026"),
+        target_location=request_data.get("target_location"),
+        max_cloud_coverage=float(request_data.get("max_cloud_coverage", 15.0))
+    )
+
+    res = auto_eo_pipeline.execute_auto_query(req)
+    return res.model_dump()
+
+
+@router.post("/satellite/download/{product_id}")
+def download_satellite_product(product_id: str):
+    """
+    Downloads and caches satellite product raster bytes.
+    """
+    from satellite import ImageDownloader
+
+    downloader = ImageDownloader()
+    raster_bytes = downloader.retrieve_raster(product_id)
+    return {
+        "product_id": product_id,
+        "cached": True,
+        "size_bytes": len(raster_bytes),
+        "status": "READY_FOR_ANALYSIS"
+    }
+
