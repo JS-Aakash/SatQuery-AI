@@ -291,12 +291,18 @@ export const ImageryViewer: React.FC<ImageryViewerProps> = ({
               className="relative w-full h-full max-w-[860px] max-h-[580px] aspect-[4/3] rounded-md overflow-hidden border border-slate-800 shadow-2xl select-none touch-none cursor-ew-resize"
             >
               {/* Layer B (Right side of swipe) */}
-              <img
-                src={imageBUrl}
-                alt={imageBName || "Image B"}
-                className="absolute inset-0 w-full h-full object-contain pointer-events-none select-none"
-                draggable={false}
-              />
+              {imageBUrl ? (
+                <img
+                  src={imageBUrl}
+                  alt={imageBName || "Image B"}
+                  className="absolute inset-0 w-full h-full object-contain pointer-events-none select-none"
+                  draggable={false}
+                />
+              ) : (
+                <div className="absolute inset-0 flex items-center justify-center text-slate-600 text-xs font-mono">
+                  No Secondary Raster
+                </div>
+              )}
               <div className="absolute bottom-3 right-3 px-2 py-1 rounded bg-slate-900/90 text-cyan-300 font-mono text-[10px] border border-slate-700 pointer-events-none select-none">
                 {imageBName || "OBSERVATION T2 / SAR"}
               </div>
@@ -306,12 +312,18 @@ export const ImageryViewer: React.FC<ImageryViewerProps> = ({
                 className="absolute inset-0 overflow-hidden pointer-events-none select-none"
                 style={{ clipPath: `polygon(0 0, ${splitPosition}% 0, ${splitPosition}% 100%, 0 100%)` }}
               >
-                <img
-                  src={imageAUrl}
-                  alt={imageAName}
-                  className="absolute inset-0 w-full h-full object-contain pointer-events-none select-none"
-                  draggable={false}
-                />
+                {imageAUrl ? (
+                  <img
+                    src={imageAUrl}
+                    alt={imageAName}
+                    className="absolute inset-0 w-full h-full object-contain pointer-events-none select-none"
+                    draggable={false}
+                  />
+                ) : (
+                  <div className="absolute inset-0 flex items-center justify-center text-slate-600 text-xs font-mono">
+                    No Primary Raster
+                  </div>
+                )}
                 <div className="absolute bottom-3 left-3 px-2 py-1 rounded bg-slate-900/90 text-emerald-300 font-mono text-[10px] border border-slate-700 pointer-events-none select-none">
                   {imageAName || "OBSERVATION T1 / OPTICAL"}
                 </div>
@@ -418,13 +430,21 @@ export const ImageryViewer: React.FC<ImageryViewerProps> = ({
             /* Case 2: Side by Side Dual View */
             <div className="grid grid-cols-2 gap-3 w-full h-full max-w-[940px] max-h-[580px] p-4">
               <div className="relative rounded border border-slate-800 overflow-hidden flex items-center justify-center bg-slate-950">
-                <img src={imageAUrl} alt={imageAName} className="w-full h-full object-contain" draggable={false} />
+                {imageAUrl ? (
+                  <img src={imageAUrl} alt={imageAName} className="w-full h-full object-contain" draggable={false} />
+                ) : (
+                  <span className="text-xs text-slate-600 font-mono">No Image A</span>
+                )}
                 <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-slate-900/90 text-emerald-400 font-mono text-[10px] border border-slate-700">
                   {imageAName}
                 </div>
               </div>
               <div className="relative rounded border border-slate-800 overflow-hidden flex items-center justify-center bg-slate-950">
-                <img src={imageBUrl} alt={imageBName || "Image B"} className="w-full h-full object-contain" draggable={false} />
+                {imageBUrl ? (
+                  <img src={imageBUrl} alt={imageBName || "Image B"} className="w-full h-full object-contain" draggable={false} />
+                ) : (
+                  <span className="text-xs text-slate-600 font-mono">No Image B</span>
+                )}
                 <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-slate-900/90 text-cyan-400 font-mono text-[10px] border border-slate-700">
                   {imageBName || "Observation B"}
                 </div>
@@ -433,13 +453,14 @@ export const ImageryViewer: React.FC<ImageryViewerProps> = ({
           ) : (
             /* Case 3: Single Primary Image with SVG Overlays */
             <div className="relative w-full h-full max-w-[860px] max-h-[580px] rounded-md overflow-hidden border border-slate-800 shadow-2xl flex items-center justify-center bg-[#070b14]">
-              <div className="relative w-full h-full flex items-center justify-center">
-                <img
-                  src={imageAUrl}
-                  alt={imageAName}
-                  className="w-full h-full object-contain pointer-events-none select-none"
-                  draggable={false}
-                />
+              {imageAUrl ? (
+                <div className="relative inline-flex items-center justify-center max-w-full max-h-full">
+                  <img
+                    src={imageAUrl}
+                    alt={imageAName}
+                    className="max-w-full max-h-[560px] w-auto h-auto object-contain pointer-events-none select-none"
+                    draggable={false}
+                  />
 
                 {/* Change Map Heatmap Overlay */}
                 {showChangeMap && changeMap?.has_change && (
@@ -526,7 +547,12 @@ export const ImageryViewer: React.FC<ImageryViewerProps> = ({
                   </svg>
                 )}
               </div>
-            </div>
+            ) : (
+              <div className="text-center p-6 space-y-2">
+                <p className="text-sm font-mono text-slate-400">No Raster Loaded</p>
+              </div>
+            )}
+          </div>
           )}
         </div>
       </div>

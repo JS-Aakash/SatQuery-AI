@@ -83,6 +83,7 @@ export const SatelliteSearch: React.FC<SatelliteSearchProps> = ({
     setSelectedSecondarySceneId(null);
     try {
       const res = await searchSatelliteScenes({
+        location_name: location,
         start_date: startDate,
         end_date: endDate,
         sensors: selectedSensors,

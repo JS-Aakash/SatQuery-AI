@@ -137,7 +137,16 @@ class TemporalChangeResponse(BaseModel):
     stable_percent: float
     declined_percent: float
     mean_change: float
-    change_statistics: Dict[str, Any]
-    legend: Dict[str, str]
-    processing_time_ms: int
+    improved_label: str = Field(default="Significant Increase / Expansion")
+    stable_label: str = Field(default="Stable / Unchanged")
+    declined_label: str = Field(default="Significant Decrease / Loss")
+    improved_area_km2: float = Field(default=0.0)
+    stable_area_km2: float = Field(default=0.0)
+    declined_area_km2: float = Field(default=0.0)
+    human_summary: Optional[str] = Field(default=None)
+    bounding_boxes: List[Dict[str, Any]] = Field(default_factory=list)
+    change_statistics: Dict[str, Any] = Field(default_factory=dict)
+    legend: Dict[str, str] = Field(default_factory=dict)
+    processing_time_ms: int = Field(default=0)
     status: str = "COMPLETED"
+

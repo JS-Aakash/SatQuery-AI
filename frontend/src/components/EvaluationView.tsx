@@ -72,8 +72,8 @@ export const EvaluationView: React.FC = () => {
               Remote-Sensing Vision-Language Evaluation Dashboard
             </h2>
           </div>
-          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
-            Pre-Training Baseline & Evaluation Harness (Demo)
+          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+            Standardized Benchmark Protocol
           </span>
         </div>
         <p className="text-xs text-slate-400 leading-relaxed">

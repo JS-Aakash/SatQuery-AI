@@ -24,7 +24,7 @@ interface UploadZoneProps {
   secondaryImage: ImageMetadata | null;
   onSetPrimaryImage: (img: ImageMetadata | null) => void;
   onSetSecondaryImage: (img: ImageMetadata | null) => void;
-  onSelectPreset: (preset: PresetScenario) => void;
+  onSelectPreset?: (preset: PresetScenario) => void;
   activePresetId?: string;
 }
 
@@ -182,57 +182,6 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
             <span>{errorMessage}</span>
           </div>
         )}
-      </div>
-
-      {/* Preset Scenarios for Hackathon / SIH Demonstration */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-mono uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            SIH Benchmark & Evaluation Presets
-          </span>
-          <span className="text-[11px] text-slate-500 font-mono">Instant remote-sensing scenarios</span>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2.5">
-          {PRESET_SCENARIOS.map((preset) => {
-            const isSelected = activePresetId === preset.id;
-            return (
-              <button
-                key={preset.id}
-                onClick={() => onSelectPreset(preset)}
-                className={cn(
-                  "p-3 rounded-lg text-left transition-all border flex flex-col justify-between space-y-2 group relative overflow-hidden",
-                  isSelected
-                    ? "bg-slate-800/90 border-emerald-500 shadow-md shadow-emerald-950/40"
-                    : "bg-slate-900/60 hover:bg-slate-800/60 border-slate-800 hover:border-slate-700"
-                )}
-              >
-                <div>
-                  <div className="flex items-center justify-between text-[10px] font-mono mb-1">
-                    <span className="px-1.5 py-0.5 rounded bg-slate-800 text-cyan-400 border border-slate-700">
-                      {preset.category}
-                    </span>
-                    {isSelected && (
-                      <span className="text-emerald-400 font-semibold flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3" /> Loaded
-                      </span>
-                    )}
-                  </div>
-                  <h4 className="text-xs font-semibold text-slate-200 group-hover:text-emerald-400 transition-colors leading-tight">
-                    {preset.name}
-                  </h4>
-                  <p className="text-[11px] text-slate-400 mt-1 line-clamp-2">
-                    {preset.description}
-                  </p>
-                </div>
-                <div className="text-[10px] text-slate-500 font-mono truncate">
-                  📍 {preset.location}
-                </div>
-              </button>
-            );
-          })}
-        </div>
       </div>
 
       {/* Pair Compatibility Telemetry (When 2 Images Loaded) */}

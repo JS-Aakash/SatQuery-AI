@@ -9,7 +9,6 @@ from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 
 from .base import AgentService
-from .mock_providers import DEMO_SCENARIOS
 from ..schemas import (
     AnalysisRequest,
     AnalysisResponse,

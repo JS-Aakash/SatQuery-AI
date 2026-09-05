@@ -21,6 +21,21 @@ class GroundingBoundingBox(BaseModel):
     color: Optional[str] = Field(default="#10b981", description="UI highlight color")
 
 
+class GroundedRegion(BaseModel):
+    id: str
+    label: str
+    category: str
+    confidence: float
+    pixel_bbox: List[float] = Field(..., description="[ymin, xmin, ymax, xmax] in 0-100% canvas coordinates")
+    geo_bbox: List[float] = Field(..., description="[min_lon, min_lat, max_lon, max_lat] in WGS84")
+    polygon: Dict[str, Any] = Field(..., description="GeoJSON polygon geometry")
+    area_m2: float
+    area_ha: float
+    centroid: List[float] = Field(..., description="[lon, lat]")
+    color: str = "#10b981"
+    description: str = ""
+
+
 class EvidenceTag(BaseModel):
     id: str
     title: str
@@ -33,7 +48,8 @@ class EvidenceTag(BaseModel):
 class SingleImageRequest(BaseModel):
     image_id: Optional[str] = Field(default=None, description="Cached image ID from /api/uploads/file")
     image_base64: Optional[str] = Field(default=None, description="Base64 encoded PNG/JPEG image buffer")
-    query: str = Field(default="", description="Question or text grounding query (e.g. 'Find the water body')")
+    image_data_uri: Optional[str] = Field(default=None, description="Data URI string e.g. data:image/png;base64,...")
+    query: str = Field(default="", description="Question or text grounding query (e.g. 'Find potentially vacant land')")
     task: SingleImageTaskEnum = Field(default=SingleImageTaskEnum.AUTO, description="Target task: vqa, captioning, grounding, auto")
     bands: Optional[List[int]] = Field(default=None, description="Custom 3-band combination for multispectral rasters")
 
@@ -46,8 +62,12 @@ class SingleImageResponse(BaseModel):
     confidence_formatted: str = "85%"
     model_name: str
     inference_time_ms: int
+    raster_type: Optional[str] = None
     evidence_metadata: List[EvidenceTag] = Field(default_factory=list)
     bounding_boxes: List[GroundingBoundingBox] = Field(default_factory=list)
+    grounded_regions: List[GroundedRegion] = Field(default_factory=list)
+    spectral_indices: Optional[Dict[str, Any]] = None
+    disclaimer: Optional[str] = None
     model_status: str = Field(default="READY", description="'READY', 'WEIGHTS_NOT_FOUND', 'MOCK_BENCHMARK', etc.")
     status_message: Optional[str] = None
     hardware_info: Dict[str, Any] = Field(default_factory=dict)

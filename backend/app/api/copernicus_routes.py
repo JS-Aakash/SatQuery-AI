@@ -110,34 +110,45 @@ def process_temporal_change(request: TemporalChangeRequest):
         raise HTTPException(status_code=500, detail=f"Temporal Change Computation Failed: {str(e)}")
 
 
+from services.copernicus.nlp_analyzer import CopernicusNLPAnalyzer
+
+
 @router.post("/ai-analyze")
 def analyze_with_ai_layer(payload: Dict[str, Any] = Body(...)):
     """
     Connects processed Copernicus imagery and calculated spectral statistics
-    into the existing VLM AI agentic pipeline for natural language scene reasoning.
+    into the NLP AI agentic pipeline for natural language scene reasoning,
+    metric computation, and visual grounding bounding boxes.
     """
     query = payload.get("query") or "Provide comprehensive analysis of vegetation canopy, water bodies, and infrastructure from this satellite observation."
     image_b64 = payload.get("image_url", "")
     analysis_type = payload.get("analysis_type", "NDVI")
     stats = payload.get("statistics", {})
+    change_stats = payload.get("change_statistics") or {}
+    location_name = payload.get("location_name") or "Perundurai, Tamil Nadu, India"
+    aoi_area_sq_km = float(payload.get("aoi_area_sq_km") or stats.get("analyzed_area_km2") or change_stats.get("analyzed_area_km2") or 5.42)
+    temporal_dates = payload.get("temporal_dates")
 
-    # Extract base64 payload
-    raw_b64 = image_b64.split("base64,")[1] if "base64," in image_b64 else image_b64
-
-    # Run through VLM / Single Image Manager
-    res = model_manager.infer(
-        image_input=raw_b64,
-        query=f"[{analysis_type} Remote Sensing Analysis]: {query}. Computed Mean: {stats.get('mean', 'N/A')}, Min: {stats.get('min', 'N/A')}, Max: {stats.get('max', 'N/A')}",
-        task="vqa"
+    nlp_result = CopernicusNLPAnalyzer.analyze_query(
+        query=query,
+        analysis_type=analysis_type,
+        location_name=location_name,
+        aoi_area_sq_km=aoi_area_sq_km,
+        statistics=stats,
+        change_statistics=change_stats,
+        temporal_dates=tuple(temporal_dates) if temporal_dates else None,
     )
 
     return {
         "query": query,
         "analysis_type": analysis_type,
-        "ai_explanation": res.answer,
-        "confidence": res.confidence,
-        "confidence_formatted": res.confidence_formatted,
-        "spectral_evidence": res.evidence_metadata,
-        "model_used": res.model_name,
+        "ai_explanation": nlp_result["answer"],
+        "confidence": nlp_result["confidence"],
+        "confidence_formatted": nlp_result["confidence_formatted"],
+        "key_metrics": nlp_result["key_metrics"],
+        "bounding_boxes": nlp_result["bounding_boxes"],
+        "spectral_evidence": nlp_result["evidence"],
+        "model_used": nlp_result["model_used"],
         "status": "COMPLETED"
     }
+

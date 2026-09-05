@@ -16,15 +16,27 @@ import {
 } from "lucide-react";
 import { CopernicusAOI } from "../lib/types";
 
+interface MapVectorPolygon {
+  id: string;
+  label: string;
+  coordinates: number[][];
+  color?: string;
+  area_ha?: number;
+}
+
 interface SatelliteMapProps {
   center: [number, number]; // [lat, lon]
   zoom?: number;
-  aoi: CopernicusAOI;
-  onAOIChange: (newAoi: CopernicusAOI, areaKm2: number) => void;
+  aoi?: CopernicusAOI;
+  onAOIChange?: (newAoi: CopernicusAOI, areaKm2: number) => void;
   overlayImageUrl?: string;
   overlayLegend?: Record<string, string>;
   overlayTitle?: string;
-  areaKm2: number;
+  groundingBoxes?: Array<{ id: string; label: string; box: [number, number, number, number]; color?: string }>;
+  areaKm2?: number;
+  polygons?: MapVectorPolygon[];
+  selectedPolygonId?: string;
+  onSelectPolygon?: (poly: MapVectorPolygon) => void;
 }
 
 export default function SatelliteMap({
@@ -35,13 +47,20 @@ export default function SatelliteMap({
   overlayImageUrl,
   overlayLegend,
   overlayTitle,
-  areaKm2,
+  groundingBoxes,
+  areaKm2 = 0,
+  polygons,
+  selectedPolygonId,
+  onSelectPolygon,
 }: SatelliteMapProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const aoiLayerRef = useRef<any>(null);
   const overlayLayerRef = useRef<any>(null);
+  const polygonsLayerGroupRef = useRef<any>(null);
+  const boxesLayerGroupRef = useRef<any>(null);
   const markerRef = useRef<any>(null);
+
 
   const [drawMode, setDrawMode] = useState<"none" | "rectangle" | "polygon">("none");
   const [baseMap, setBaseMap] = useState<"osm" | "satellite">("satellite");
@@ -156,7 +175,9 @@ export default function SatelliteMap({
               coordinates: [coords],
             };
             const computedArea = calculatePolygonAreaKm2(coords);
-            onAOIChange(newAoi, computedArea);
+            if (onAOIChange) {
+              onAOIChange(newAoi, computedArea);
+            }
             setDrawMode("none");
             (window as any)._currentDrawMode = "none";
           }
@@ -259,6 +280,137 @@ export default function SatelliteMap({
     })();
   }, [overlayImageUrl, overlayOpacity, aoi, mapLoaded]);
 
+  // Update Grounding Boxes Overlay
+  useEffect(() => {
+    if (!mapInstanceRef.current || !mapLoaded) return;
+    const map = mapInstanceRef.current;
+
+    (async () => {
+      const L = (await import("leaflet")).default;
+      if (boxesLayerGroupRef.current) {
+        map.removeLayer(boxesLayerGroupRef.current);
+        boxesLayerGroupRef.current = null;
+      }
+
+      if (groundingBoxes && groundingBoxes.length > 0 && aoi && aoi.coordinates && aoi.coordinates[0]) {
+        const coords = aoi.coordinates[0];
+        const lats = coords.map((c) => c[1]);
+        const lons = coords.map((c) => c[0]);
+        const minLat = Math.min(...lats);
+        const maxLat = Math.max(...lats);
+        const minLon = Math.min(...lons);
+        const maxLon = Math.max(...lons);
+        const dLat = maxLat - minLat;
+        const dLon = maxLon - minLon;
+
+        const group = L.layerGroup();
+
+        groundingBoxes.forEach((gb) => {
+          if (!gb.box || gb.box.length !== 4) return;
+          const [ymin, xmin, ymax, xmax] = gb.box;
+          const boxMinLat = maxLat - (ymax / 100.0) * dLat;
+          const boxMaxLat = maxLat - (ymin / 100.0) * dLat;
+          const boxMinLon = minLon + (xmin / 100.0) * dLon;
+          const boxMaxLon = minLon + (xmax / 100.0) * dLon;
+
+          const rect = L.rectangle(
+            [
+              [boxMinLat, boxMinLon],
+              [boxMaxLat, boxMaxLon],
+            ],
+            {
+              color: gb.color || "#f59e0b",
+              weight: 2.5,
+              fillColor: gb.color || "#f59e0b",
+              fillOpacity: 0.18,
+              dashArray: "3, 3",
+            }
+          );
+
+          if (gb.label) {
+            rect.bindTooltip(gb.label, {
+              permanent: true,
+              direction: "top",
+              className: "leaflet-grounding-tooltip",
+            });
+          }
+
+          group.addLayer(rect);
+        });
+
+        group.addTo(map);
+        boxesLayerGroupRef.current = group;
+      }
+    })();
+  }, [groundingBoxes, aoi, mapLoaded]);
+
+  // Update Vector Polygons Layer (GeoJSON / Spatial grounding polygons)
+  useEffect(() => {
+    if (!mapInstanceRef.current || !mapLoaded) return;
+    const map = mapInstanceRef.current;
+
+    (async () => {
+      const L = (await import("leaflet")).default;
+      if (polygonsLayerGroupRef.current) {
+        map.removeLayer(polygonsLayerGroupRef.current);
+        polygonsLayerGroupRef.current = null;
+      }
+
+      if (polygons && polygons.length > 0) {
+        const group = L.layerGroup();
+        let selectedLayer: any = null;
+
+        polygons.forEach((poly) => {
+          if (!poly.coordinates || poly.coordinates.length < 3) return;
+          const latLngs = poly.coordinates.map((c) => [c[1], c[0]]);
+          const isSelected = poly.id === selectedPolygonId;
+
+          const leafletPoly = L.polygon(latLngs as any, {
+            color: isSelected ? "#38bdf8" : (poly.color || "#10b981"),
+            weight: isSelected ? 3.5 : 2,
+            fillColor: isSelected ? "#38bdf8" : (poly.color || "#10b981"),
+            fillOpacity: isSelected ? 0.45 : 0.25,
+          });
+
+          if (poly.label) {
+            leafletPoly.bindTooltip(
+              `<strong>${poly.label}</strong>${poly.area_ha ? ` (${poly.area_ha.toFixed(2)} ha)` : ""}`,
+              {
+                permanent: isSelected,
+                direction: "top",
+                className: "leaflet-grounding-tooltip",
+              }
+            );
+          }
+
+          leafletPoly.on("click", () => {
+            if (onSelectPolygon) {
+              onSelectPolygon(poly);
+            }
+          });
+
+          if (isSelected) {
+            selectedLayer = leafletPoly;
+          }
+
+          group.addLayer(leafletPoly);
+        });
+
+        group.addTo(map);
+        polygonsLayerGroupRef.current = group;
+
+        if (selectedLayer) {
+          try {
+            map.fitBounds(selectedLayer.getBounds(), { maxZoom: 16, padding: [40, 40] });
+          } catch (e) {
+            // ignore bounds fit error
+          }
+        }
+      }
+    })();
+  }, [polygons, selectedPolygonId, onSelectPolygon, mapLoaded]);
+
+
   // Sync drawMode with window global
   useEffect(() => {
     (window as any)._currentDrawMode = drawMode;
@@ -298,7 +450,9 @@ export default function SatelliteMap({
       coordinates: [defaultCoords],
       bbox: [lon - dLon, lat - dLat, lon + dLon, lat + dLat],
     };
-    onAOIChange(newAoi, calculatePolygonAreaKm2(defaultCoords));
+    if (onAOIChange) {
+      onAOIChange(newAoi, calculatePolygonAreaKm2(defaultCoords));
+    }
     setDrawMode("none");
   };
 
@@ -320,7 +474,9 @@ export default function SatelliteMap({
       coordinates: [coords],
       bbox: [lon - dLon, lat - dLat, lon + dLon, lat + dLat],
     };
-    onAOIChange(newAoi, calculatePolygonAreaKm2(coords));
+    if (onAOIChange) {
+      onAOIChange(newAoi, calculatePolygonAreaKm2(coords));
+    }
     setDrawMode("none");
   };
 

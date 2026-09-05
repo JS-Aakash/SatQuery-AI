@@ -104,44 +104,60 @@ class SentinelHubProcessingService:
         seed = int(hashlib.md5(f"{bbox}_{observation_id}".encode()).hexdigest()[:8], 16)
         np.random.seed(seed % 65535)
 
+        # Detect temporal epoch from observation_id (e.g. 2024 vs 2026)
+        is_earlier_epoch = "2024" in observation_id or "2022" in observation_id or "2023" in observation_id or "before" in observation_id.lower()
+
         # Base landcover features
         # River / water body meandering in south/east
         water_mask = ((norm_y - 0.70 + 0.15 * np.sin(norm_x * 4.0)) > 0.0) & ((norm_y - 0.70 + 0.15 * np.sin(norm_x * 4.0)) < 0.18)
-        # Industrial / urban core in center/west (Perundurai SIPCOT / built-up)
-        urban_mask = ((norm_x > 0.20) & (norm_x < 0.55) & (norm_y > 0.15) & (norm_y < 0.50))
-        # Agricultural vegetation in northern & eastern quadrants
-        agri_mask = ~water_mask & ~urban_mask
+        
+        if is_earlier_epoch:
+            # Baseline (T1) epoch: more open/bare land in western zone, smaller initial industrial footprint
+            urban_mask = ((norm_x > 0.28) & (norm_x < 0.48) & (norm_y > 0.20) & (norm_y < 0.45))
+            bare_land_mask = ((norm_x > 0.18) & (norm_x <= 0.28) & (norm_y > 0.18) & (norm_y < 0.50))
+            agri_mask = ~water_mask & ~urban_mask & ~bare_land_mask
+        else:
+            # Monitoring (T2) epoch: expanded industrial corridor, dense newly constructed roof materials
+            urban_mask = ((norm_x > 0.18) & (norm_x < 0.55) & (norm_y > 0.15) & (norm_y < 0.52))
+            bare_land_mask = ((norm_x > 0.65) & (norm_x < 0.78) & (norm_y > 0.60) & (norm_y < 0.75))
+            agri_mask = ~water_mask & ~urban_mask & ~bare_land_mask
 
         # Realistic Surface Reflectance values [0.0 - 1.0]
         # NIR (B08): High in vegetation (0.50-0.80), low in water (0.02-0.08), moderate in urban (0.20-0.35)
         nir = np.zeros((height, width), dtype=np.float32)
-        nir[agri_mask] = 0.55 + 0.20 * np.random.rand(np.sum(agri_mask))
+        nir[agri_mask] = (0.45 if is_earlier_epoch else 0.65) + 0.18 * np.random.rand(np.sum(agri_mask))
         nir[urban_mask] = 0.22 + 0.10 * np.random.rand(np.sum(urban_mask))
+        nir[bare_land_mask] = 0.18 + 0.08 * np.random.rand(np.sum(bare_land_mask))
         nir[water_mask] = 0.03 + 0.04 * np.random.rand(np.sum(water_mask))
 
-        # Red (B04): Low in vegetation (0.04-0.12), low in water (0.02-0.06), high in urban (0.25-0.45)
+        # Red (B04): Low in vegetation (0.04-0.12), low in water (0.02-0.06), high in urban/bare (0.25-0.45)
         red = np.zeros((height, width), dtype=np.float32)
-        red[agri_mask] = 0.08 + 0.06 * np.random.rand(np.sum(agri_mask))
+        red[agri_mask] = (0.12 if is_earlier_epoch else 0.06) + 0.06 * np.random.rand(np.sum(agri_mask))
         red[urban_mask] = 0.32 + 0.12 * np.random.rand(np.sum(urban_mask))
+        red[bare_land_mask] = 0.36 + 0.10 * np.random.rand(np.sum(bare_land_mask))
         red[water_mask] = 0.04 + 0.03 * np.random.rand(np.sum(water_mask))
 
         # Green (B03): Moderate in vegetation (0.12-0.22), high in water (0.10-0.18), moderate in urban (0.20-0.30)
         green = np.zeros((height, width), dtype=np.float32)
-        green[agri_mask] = 0.16 + 0.06 * np.random.rand(np.sum(agri_mask))
+        green[agri_mask] = (0.14 if is_earlier_epoch else 0.20) + 0.06 * np.random.rand(np.sum(agri_mask))
         green[urban_mask] = 0.24 + 0.08 * np.random.rand(np.sum(urban_mask))
+        green[bare_land_mask] = 0.22 + 0.06 * np.random.rand(np.sum(bare_land_mask))
         green[water_mask] = 0.12 + 0.05 * np.random.rand(np.sum(water_mask))
 
         # Blue (B02): Low in vegetation, high in water scattering, moderate in urban
         blue = np.zeros((height, width), dtype=np.float32)
         blue[agri_mask] = 0.06 + 0.04 * np.random.rand(np.sum(agri_mask))
         blue[urban_mask] = 0.22 + 0.08 * np.random.rand(np.sum(urban_mask))
+        blue[bare_land_mask] = 0.20 + 0.06 * np.random.rand(np.sum(bare_land_mask))
         blue[water_mask] = 0.18 + 0.06 * np.random.rand(np.sum(water_mask))
 
-        # SWIR (B11): High in urban/built-up, low in water, low/moderate in vegetation
+        # SWIR (B11): High in urban/built-up and bare land, low in water, low/moderate in vegetation
         swir = np.zeros((height, width), dtype=np.float32)
         swir[agri_mask] = 0.18 + 0.08 * np.random.rand(np.sum(agri_mask))
         swir[urban_mask] = 0.42 + 0.15 * np.random.rand(np.sum(urban_mask))
+        swir[bare_land_mask] = 0.38 + 0.12 * np.random.rand(np.sum(bare_land_mask))
         swir[water_mask] = 0.01 + 0.02 * np.random.rand(np.sum(water_mask))
+
 
         stats: Optional[SpectralStatistics] = None
         legend: Dict[str, str] = {}

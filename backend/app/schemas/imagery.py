@@ -44,10 +44,15 @@ class ImageMetadata(BaseModel):
     nodata: Optional[Union[float, int, str]] = Field(default=None, description="Nodata / fill pixel value")
     modality: ModalityEnum = Field(default=ModalityEnum.OPTICAL, description="Imagery modality")
     sensor: SensorEnum = Field(default=SensorEnum.UNKNOWN, description="Identified satellite sensor")
+    raster_type: Optional[str] = Field(default=None, description="Detected raster type: OPTICAL RGB, OPTICAL MULTISPECTRAL, OPTICAL SINGLE-BAND, SAR")
+    band_stats: Optional[List[Dict[str, float]]] = Field(default=None, description="Band-level statistics (min, max, mean, std)")
+    type_metadata: Optional[Dict[str, Any]] = Field(default=None, description="Detailed type & sensor metadata")
+    spectral_indices: Optional[Dict[str, Any]] = Field(default=None, description="Precalculated spectral indices statistics")
     acquisition_date: Optional[str] = Field(default=None, description="Acquisition date (ISO string)")
     is_valid: bool = Field(default=True, description="Whether validation checks passed")
     validation_notes: List[str] = Field(default_factory=list, description="Diagnostic validation notes")
     preview_url: Optional[str] = Field(default=None, description="Data URL or preview URL")
+    download_url: Optional[str] = Field(default=None, description="Direct download URL for generated/processed GeoTIFF")
 
 
 class ImageUploadValidationRequest(BaseModel):

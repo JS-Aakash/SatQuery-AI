@@ -53,7 +53,7 @@ class DefaultImageProcessor(ImageProcessor):
                         if meta["modality"] == "SAR":
                             _, preview_url = SARPreprocessor.create_sar_preview(sample_bytes)
                         else:
-                            _, preview_url = BandService.create_true_color_rgb(sample_bytes)
+                            _, preview_url, _ = BandService.create_true_color_rgb(sample_bytes, filename=filename)
                     except Exception:
                         preview_url = None
 
@@ -73,6 +73,14 @@ class DefaultImageProcessor(ImageProcessor):
                         sensor_enum = SensorEnum.CARTOSAT_2S
                     elif "RISAT" in meta["sensor"]:
                         sensor_enum = SensorEnum.RISAT
+
+                    # Precalculate spectral indices statistics if available
+                    indices_stats = None
+                    try:
+                        indices_res = BandService.compute_spectral_indices(sample_bytes, filename=filename)
+                        indices_stats = indices_res.get("statistics")
+                    except Exception:
+                        pass
 
                     return ImageMetadata(
                         id=image_id,
@@ -94,17 +102,33 @@ class DefaultImageProcessor(ImageProcessor):
                         nodata=meta.get("nodata"),
                         modality=modality_enum,
                         sensor=sensor_enum,
+                        raster_type=meta.get("raster_type", "OPTICAL MULTISPECTRAL"),
+                        band_stats=meta.get("band_stats"),
+                        type_metadata=meta.get("type_metadata"),
+                        spectral_indices=indices_stats,
                         acquisition_date="2024-03-15T05:32:00Z",
                         is_valid=True,
                         validation_notes=[
-                            f"Validated {meta['driver']} raster with {meta['bands']} channels ({meta['dtype']}).",
+                            f"Identified {meta.get('raster_type')} raster ({meta['bands']} channels, {meta['dtype']}).",
                             f"CRS: {meta.get('crs') or 'Local / Unspecified'}",
-                            f"Dimensions: {meta['width']}x{meta['height']} px"
+                            f"Resolution: {meta.get('resolution_m')}m GSD ({meta['width']}x{meta['height']} px)"
                         ] + val_res.get("warnings", []),
                         preview_url=preview_url
                     )
                 except Exception as e:
                     pass
+            else:
+                return ImageMetadata(
+                    id=image_id,
+                    filename=filename,
+                    file_size_bytes=file_size_bytes,
+                    file_size_formatted=size_formatted,
+                    format=ext.replace(".", "").upper() if ext else "UNKNOWN",
+                    dimensions=[0, 0],
+                    bands=0,
+                    is_valid=False,
+                    validation_notes=val_res.get("errors", ["Invalid or corrupted raster format."])
+                )
 
         # Fallback when raw byte payload is not provided (header metadata inspection from filename/size)
         import re

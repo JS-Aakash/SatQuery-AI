@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   AlertCircle,
   RotateCcw,
+  RefreshCw,
   Cpu,
   Activity,
 } from "lucide-react";
@@ -22,7 +23,10 @@ import { UploadZone } from "../components/UploadZone";
 import { SatelliteSearch } from "../components/SatelliteSearch";
 import { MapAOI } from "../components/MapAOI";
 import CopernicusExplorer from "../components/CopernicusExplorer";
+import GeospatialSearch from "../components/GeospatialSearch";
+import SingleImageStudio from "../components/SingleImageStudio";
 import { QueryBox } from "../components/QueryBox";
+
 import { ImageryViewer } from "../components/ImageryViewer";
 import { AIAnswerPanel } from "../components/AIAnswerPanel";
 import { HistoryView } from "../components/HistoryView";
@@ -51,16 +55,16 @@ export default function Home() {
   const [backendOnline, setBackendOnline] = useState(false);
   const [latencyMs, setLatencyMs] = useState(28);
 
-  // Input modes: "upload" | "copernicus" | "search" | "aoi"
-  const [inputMode, setInputMode] = useState<"upload" | "copernicus" | "search" | "aoi">("upload");
+  // Input modes: "single" | "geospatial" | "copernicus" | "bitemporal"
+  const [inputMode, setInputMode] = useState<"single" | "geospatial" | "copernicus" | "bitemporal">("single");
 
   // Imagery states
-  const [primaryImage, setPrimaryImage] = useState<ImageMetadata | null>(PRESET_SCENARIOS[0].imageA);
+  const [primaryImage, setPrimaryImage] = useState<ImageMetadata | null>(null);
   const [secondaryImage, setSecondaryImage] = useState<ImageMetadata | null>(null);
-  const [activePreset, setActivePreset] = useState<PresetScenario | null>(PRESET_SCENARIOS[0]);
+  const [activePreset, setActivePreset] = useState<PresetScenario | null>(null);
 
   // Query and Analysis states
-  const [query, setQuery] = useState(PRESET_SCENARIOS[0].defaultQuery);
+  const [query, setQuery] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<AnalysisResponse | null>(null);
   const [selectedBoxId, setSelectedBoxId] = useState<string | null>(null);
@@ -174,8 +178,8 @@ export default function Home() {
         activeTab={activeTab}
         onTabChange={(tab) => {
           setActiveTab(tab);
-          if (tab === "reports") {
-            handleOpenReport(analysisResult?.analysis_id || "demo-analysis");
+          if (tab === "reports" && analysisResult?.analysis_id) {
+            handleOpenReport(analysisResult.analysis_id);
           }
         }}
         onOpenSystemStatus={() => setIsSystemStatusOpen(true)}
@@ -277,16 +281,29 @@ export default function Home() {
                   {/* Mode Selector Tabs */}
                   <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 pb-2">
                     <button
-                      onClick={() => setInputMode("upload")}
+                      onClick={() => setInputMode("single")}
                       className={cn(
                         "px-3.5 py-2 rounded-md text-xs font-mono font-medium transition-all flex items-center space-x-2",
-                        inputMode === "upload"
-                          ? "bg-slate-800 text-emerald-400 border border-emerald-500/40 shadow-sm"
-                          : "text-slate-400 hover:text-slate-200 hover:bg-slate-900"
+                        inputMode === "single"
+                          ? "bg-emerald-950/70 text-emerald-300 border border-emerald-500/50 shadow-sm shadow-emerald-950/40 font-bold"
+                          : "text-slate-400 hover:text-emerald-400 hover:bg-slate-900"
                       )}
                     >
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>1. Upload Imagery</span>
+                      <Compass className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>1. Single-Image Studio (Optical / SAR / Pairs)</span>
+                    </button>
+
+                    <button
+                      onClick={() => setInputMode("geospatial")}
+                      className={cn(
+                        "px-3.5 py-2 rounded-md text-xs font-mono font-medium transition-all flex items-center space-x-2",
+                        inputMode === "geospatial"
+                          ? "bg-cyan-950/70 text-cyan-300 border border-cyan-500/50 shadow-sm shadow-cyan-950/40 font-bold"
+                          : "text-slate-400 hover:text-cyan-400 hover:bg-slate-900"
+                      )}
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>2. Natural-Language Geospatial Search</span>
                     </button>
 
                     <button
@@ -294,170 +311,111 @@ export default function Home() {
                       className={cn(
                         "px-3.5 py-2 rounded-md text-xs font-mono font-medium transition-all flex items-center space-x-2",
                         inputMode === "copernicus"
-                          ? "bg-emerald-950/60 text-emerald-300 border border-emerald-500/50 shadow-sm shadow-emerald-950/40 font-bold"
-                          : "text-slate-400 hover:text-emerald-400 hover:bg-slate-900"
+                          ? "bg-blue-950/60 text-blue-300 border border-blue-500/50 shadow-sm shadow-blue-950/40 font-bold"
+                          : "text-slate-400 hover:text-blue-400 hover:bg-slate-900"
                       )}
                     >
-                      <Satellite className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>2. Copernicus Data Space (Sentinel-2 / NDVI / Map)</span>
+                      <Satellite className="w-3.5 h-3.5 text-blue-400" />
+                      <span>3. Copernicus Data Space & Spectral Analysis</span>
                     </button>
 
                     <button
-                      onClick={() => setInputMode("search")}
+                      onClick={() => setInputMode("bitemporal")}
                       className={cn(
                         "px-3.5 py-2 rounded-md text-xs font-mono font-medium transition-all flex items-center space-x-2",
-                        inputMode === "search"
-                          ? "bg-slate-800 text-cyan-400 border border-cyan-500/40 shadow-sm"
-                          : "text-slate-400 hover:text-slate-200 hover:bg-slate-900"
+                        inputMode === "bitemporal"
+                          ? "bg-purple-950/60 text-purple-300 border border-purple-500/50 shadow-sm shadow-purple-950/40 font-bold"
+                          : "text-slate-400 hover:text-purple-400 hover:bg-slate-900"
                       )}
                     >
-                      <Search className="w-3.5 h-3.5" />
-                      <span>3. Auto Catalog Search</span>
-                    </button>
-
-                    <button
-                      onClick={() => setInputMode("aoi")}
-                      className={cn(
-                        "px-3.5 py-2 rounded-md text-xs font-mono font-medium transition-all flex items-center space-x-2",
-                        inputMode === "aoi"
-                          ? "bg-slate-800 text-amber-400 border border-amber-500/40 shadow-sm"
-                          : "text-slate-400 hover:text-slate-200 hover:bg-slate-900"
-                      )}
-                    >
-                      <MapPin className="w-3.5 h-3.5" />
-                      <span>4. AOI Definition</span>
+                      <Layers className="w-3.5 h-3.5 text-purple-400" />
+                      <span>4. Bi-Temporal Change Detection</span>
                     </button>
                   </div>
 
                   {/* Mode Content Panes */}
                   <div className="bg-[#090e1a]/80 border border-slate-800/80 rounded-xl p-5 shadow-xl">
+                    {inputMode === "single" && (
+                      <SingleImageStudio />
+                    )}
+
+                    {inputMode === "geospatial" && (
+                      <GeospatialSearch />
+                    )}
+
                     {inputMode === "copernicus" && (
                       <CopernicusExplorer />
                     )}
 
-                    {inputMode === "upload" && (
-                      <UploadZone
-                        primaryImage={primaryImage}
-                        secondaryImage={secondaryImage}
-                        onSetPrimaryImage={(img) => {
-                          setPrimaryImage(img);
-                          if (img) {
-                            setActivePreset(null);
-                            if (!query.trim()) {
-                              setQuery("Describe the land-cover classification and highlight major objects visible in this image.");
-                            }
-                          } else if (secondaryImage) {
-                            // Automatically promote secondary image to primary image if primary is cleared
-                            setPrimaryImage(secondaryImage);
-                            setSecondaryImage(null);
-                          }
-                        }}
-                        onSetSecondaryImage={(img) => {
-                          setSecondaryImage(img);
-                          if (img) {
-                            setActivePreset(null);
-                          }
-                        }}
-                        onSelectPreset={handleSelectPreset}
-                        activePresetId={activePreset?.id}
-                      />
-                    )}
+                    {inputMode === "bitemporal" && (
+                      <div className="space-y-6">
+                        <UploadZone
+                          primaryImage={primaryImage}
+                          secondaryImage={secondaryImage}
+                          onSetPrimaryImage={(img) => setPrimaryImage(img)}
+                          onSetSecondaryImage={(img) => setSecondaryImage(img)}
+                        />
 
-                    {inputMode === "search" && (
-                      <SatelliteSearch
-                        onSelectScene={(meta, isSecondary) => {
-                          if (isSecondary) {
-                            setSecondaryImage(meta);
-                          } else {
-                            setPrimaryImage(meta);
-                          }
-                          setActivePreset(null);
-                        }}
-                        onExecuteAutoAnalysis={(autoRes) => {
-                          const mappedRes: AnalysisResponse = {
-                            analysis_id: autoRes.workflow_id || `eo_${Date.now()}`,
-                            query: autoRes.original_query || "Autonomous Earth Observation Query",
-                            task: autoRes.task || "Bi-Temporal Change Intelligence",
-                            status: "COMPLETED",
-                            answer: autoRes.answer,
-                            confidence: autoRes.confidence || 0.95,
-                            confidence_formatted: autoRes.confidence_formatted || "95% (Calibrated)",
-                            evidence: [
-                              {
-                                id: "ev-auto-1",
-                                title: `Copernicus ${autoRes.sensor} Data Acquisition`,
-                                category: "Satellite Retrieval",
-                                description: `Acquired for ${autoRes.location_name} (Bounds: ${autoRes.bbox?.join(", ")})`,
-                                confidence: 0.96,
-                              }
-                            ],
-                            execution_trace: autoRes.execution_trace?.map((s: any) => ({
-                              step_id: s.step,
-                              name: s.task,
-                              description: s.output_summary,
-                              status: "completed",
-                              duration_ms: s.duration_ms,
-                              tool_or_model: s.tool,
-                            })) || [],
-                            grounding_boxes: [],
-                            models_used: ["Copernicus CDSE", "GeoChat-7B", "ChangeNet"],
-                            execution_time_ms: autoRes.execution_time_ms || 1200,
-                            created_at: new Date().toISOString(),
-                            is_mock: false,
-                            model_status: "READY"
-                          };
-                          setAnalysisResult(mappedRes);
-                        }}
-                      />
-                    )}
-
-                    {inputMode === "aoi" && (
-                      <MapAOI onAoiDefined={handleAoiDefined} />
-                    )}
-                  </div>
-
-                  {/* Natural Language Query Interface */}
-                  <div className="pt-2 space-y-3">
-                    {/* Model Inference Loading State */}
-                    {isAnalyzing && (
-                      <div className="p-4 rounded-xl bg-slate-900/95 border border-emerald-500/50 shadow-2xl space-y-3 animate-in fade-in duration-200">
-                        <div className="flex items-center justify-between text-xs font-mono">
-                          <div className="flex items-center space-x-2 text-emerald-400">
-                            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
-                            <span className="font-semibold uppercase tracking-wider">
-                              Executing Remote-Sensing VLM Inference...
+                        <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-mono text-purple-400 font-semibold uppercase flex items-center gap-1.5">
+                              <Sparkles className="w-4 h-4 text-purple-400" />
+                              Bi-Temporal Change Query & Intelligence
                             </span>
+                            {primaryImage && secondaryImage ? (
+                              <span className="text-[10px] font-mono text-emerald-400 flex items-center gap-1">
+                                <CheckCircle2 className="w-3 h-3" /> Both Observations Ready
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-mono text-slate-500">
+                                Upload Date 1 & Date 2 rasters to enable
+                              </span>
+                            )}
                           </div>
-                          <span className="text-slate-400 font-mono text-[11px]">GeoChat / Spatial Grounding</span>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-[11px] font-mono text-slate-300">
-                          <div className="p-2.5 rounded-lg bg-slate-950/80 border border-slate-800 flex items-center space-x-2">
-                            <span className="text-emerald-400 font-bold">1.</span>
-                            <span>Raster Ingestion & Band Normalization</span>
+
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              value={query || "Analyze bi-temporal land-cover changes, vegetation loss, and urban growth."}
+                              onChange={(e) => setQuery(e.target.value)}
+                              onKeyDown={(e) => e.key === "Enter" && handleAnalyze()}
+                              placeholder="e.g. Quantify urban expansion, Detect vegetation loss between Date 1 and Date 2..."
+                              className="flex-1 px-3.5 py-2 rounded-lg bg-slate-800/80 border border-slate-700 text-slate-100 text-sm focus:outline-none focus:border-purple-500 font-mono"
+                            />
+                            <button
+                              onClick={handleAnalyze}
+                              disabled={isAnalyzing || !primaryImage || !secondaryImage}
+                              className="px-5 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 disabled:bg-slate-800 text-white font-semibold text-xs uppercase font-mono tracking-wider transition-colors flex items-center gap-1.5 shadow-md shadow-purple-950/40"
+                            >
+                              {isAnalyzing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                              Execute Change Analysis
+                            </button>
                           </div>
-                          <div className="p-2.5 rounded-lg bg-slate-950/80 border border-emerald-500/30 flex items-center space-x-2">
-                            <span className="text-cyan-400 font-bold">2.</span>
-                            <span>Visual Feature Extraction & Cross-Attention</span>
-                          </div>
-                          <div className="p-2.5 rounded-lg bg-slate-950/80 border border-slate-800 flex items-center space-x-2">
-                            <span className="text-amber-400 font-bold">3.</span>
-                            <span>Text Grounding & Coordinate Standardizing</span>
+
+                          <div className="flex flex-wrap gap-1.5 pt-1">
+                            {[
+                              "Analyze urban expansion and new construction",
+                              "Quantify vegetation loss and agricultural canopy decline",
+                              "Detect surface water body depletion or flood inundation",
+                              "Identify persistent bare land candidates across both epochs",
+                            ].map((chip, idx) => (
+                              <button
+                                key={idx}
+                                onClick={() => {
+                                  setQuery(chip);
+                                  if (primaryImage && secondaryImage) {
+                                    handleAnalyze();
+                                  }
+                                }}
+                                className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[11px] text-slate-300 font-mono transition-colors"
+                              >
+                                {chip}
+                              </button>
+                            ))}
                           </div>
                         </div>
                       </div>
                     )}
-
-                    <div className="text-xs font-mono uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-                      Agentic Natural-Language Query
-                    </div>
-                    <QueryBox
-                      query={query}
-                      onQueryChange={setQuery}
-                      onAnalyze={handleAnalyze}
-                      isAnalyzing={isAnalyzing}
-                      disabled={!primaryImage && !secondaryImage}
-                    />
                   </div>
                 </div>
               )}

@@ -5,8 +5,8 @@ import uuid
 import base64
 import os
 from datetime import datetime, timezone
-from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form, Body
+from typing import List, Optional, Dict, Any, Union
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form, Body, Response
 
 from ..schemas import (
     ImageUploadValidationRequest,
@@ -56,9 +56,10 @@ from preprocessing import (
     CRSService,
     BandService,
     SARPreprocessor,
-    ImageAlignmentService,
     AOIService,
     TileService,
+    MultispectralBuilder,
+    RasterClassifier,
 )
 
 router = APIRouter()
@@ -278,6 +279,7 @@ async def upload_file_multipart(file: UploadFile = File(...)):
     )
 
     # Cache raster bytes and metadata for AOI/tiling operations
+    metadata.download_url = f"/api/single/download/{metadata.id}"
     RASTER_CACHE[metadata.id] = content
     METADATA_CACHE[metadata.id] = metadata
 
@@ -285,6 +287,81 @@ async def upload_file_multipart(file: UploadFile = File(...)):
         is_valid=metadata.is_valid,
         status_message=f"GeoTIFF {filename} parsed successfully. Extracted {metadata.bands} bands ({metadata.dtype}).",
         metadata=metadata
+    )
+
+
+@router.post("/single/upload", response_model=ImageUploadValidationResponse)
+async def upload_single_geotiff(file: UploadFile = File(...)):
+    """
+    Dedicated endpoint for the Single-Image Geospatial Multimodal workflow.
+    Validates and inspects 1 uploaded GeoTIFF/TIFF raster (Optical RGB, Multispectral, Single-Band, or SAR).
+    """
+    return await upload_file_multipart(file)
+
+
+@router.post("/single/build-multispectral", response_model=ImageUploadValidationResponse)
+async def build_multispectral_geotiff(
+    b02: Optional[UploadFile] = File(None),
+    b03: Optional[UploadFile] = File(None),
+    b04: Optional[UploadFile] = File(None),
+    b08: Optional[UploadFile] = File(None),
+    b11: Optional[UploadFile] = File(None),
+    b12: Optional[UploadFile] = File(None),
+):
+    """
+    Optional utility to assemble individual single-band TIFFs into one valid multispectral GeoTIFF.
+    Handles resolution resampling (20m -> 10m) and spatial grid alignment.
+    """
+    band_dict = {}
+    if b02: band_dict["B02"] = await b02.read()
+    if b03: band_dict["B03"] = await b03.read()
+    if b04: band_dict["B04"] = await b04.read()
+    if b08: band_dict["B08"] = await b08.read()
+    if b11: band_dict["B11"] = await b11.read()
+    if b12: band_dict["B12"] = await b12.read()
+
+    if not band_dict:
+        raise HTTPException(status_code=400, detail="Must upload at least 2 single-band TIFF files.")
+
+    try:
+        combined_bytes, summary = MultispectralBuilder.build_multiband_geotiff(band_dict)
+        combined_filename = f"sentinel2_multispectral_{len(band_dict)}bands.tif"
+        metadata = image_processor.validate_image_header(
+            filename=combined_filename,
+            file_size_bytes=len(combined_bytes),
+            sample_bytes=combined_bytes
+        )
+        metadata.download_url = f"/api/single/download/{metadata.id}"
+        RASTER_CACHE[metadata.id] = combined_bytes
+        METADATA_CACHE[metadata.id] = metadata
+
+        return ImageUploadValidationResponse(
+            is_valid=True,
+            status_message=f"Successfully built multispectral GeoTIFF ({len(band_dict)} bands aligned to 10m grid).",
+            metadata=metadata
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Multispectral assembly failed: {e}")
+
+
+@router.get("/single/download/{image_id}")
+async def download_single_geotiff(image_id: str):
+    """
+    Direct download endpoint for user-uploaded or system-generated multi-band GeoTIFFs.
+    """
+    if image_id not in RASTER_CACHE:
+        raise HTTPException(status_code=404, detail="Requested GeoTIFF not found or expired in cache.")
+    
+    raster_bytes = RASTER_CACHE[image_id]
+    metadata = METADATA_CACHE.get(image_id)
+    filename = metadata.filename if metadata else f"satquery_{image_id[:8]}.tif"
+    if not filename.endswith((".tif", ".tiff")):
+        filename += ".tif"
+
+    return Response(
+        content=raster_bytes,
+        media_type="image/tiff",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
     )
 
 
@@ -330,14 +407,22 @@ def generate_composite_preview(request: CompositePreviewRequest):
         raise HTTPException(status_code=404, detail="Raster not found in cache. Please upload the file first.")
 
     ctype = request.composite_type.lower()
-    if ctype == "false_color_nir":
-        _, preview_url = BandService.create_false_color_infrared(raster_bytes)
-    elif ctype == "sar_db":
-        _, preview_url = SARPreprocessor.create_sar_preview(raster_bytes)
-    elif ctype == "custom" and request.bands and len(request.bands) == 3:
-        _, preview_url = BandService.create_composite(raster_bytes, bands=tuple(request.bands))
-    else:
-        _, preview_url = BandService.create_true_color_rgb(raster_bytes)
+    try:
+        if ctype == "false_color_nir":
+            res = BandService.create_false_color_infrared(raster_bytes)
+            preview_url = res[1] if isinstance(res, tuple) else res
+        elif ctype == "sar_db":
+            res = SARPreprocessor.create_sar_preview(raster_bytes)
+            preview_url = res[1] if isinstance(res, tuple) else res
+        elif ctype == "custom" and request.bands and len(request.bands) == 3:
+            res = BandService.create_composite(raster_bytes, bands=tuple(request.bands))
+            preview_url = res[1] if isinstance(res, tuple) else res
+        else:
+            res = BandService.create_true_color_rgb(raster_bytes)
+            preview_url = res[1] if isinstance(res, tuple) else res
+    except Exception as e:
+        # Fallback to single band / default visual stretch if specialized composite fails
+        _, preview_url = BandService.create_composite(raster_bytes, bands=(1, 1, 1))
 
     return CompositePreviewResponse(
         image_id=request.image_id,
@@ -408,9 +493,21 @@ def analyze_single_image(request: SingleImageRequest):
     if request.image_id:
         raster_bytes = RASTER_CACHE.get(request.image_id)
 
+    if not raster_bytes and getattr(request, "image_data_uri", None):
+        try:
+            uri = request.image_data_uri
+            if "," in uri:
+                uri = uri.split(",", 1)[1]
+            raster_bytes = base64.b64decode(uri)
+        except Exception:
+            raster_bytes = None
+
     if not raster_bytes and request.image_base64:
         try:
-            raster_bytes = base64.b64decode(request.image_base64)
+            b64_str = request.image_base64
+            if "," in b64_str:
+                b64_str = b64_str.split(",", 1)[1]
+            raster_bytes = base64.b64decode(b64_str)
         except Exception:
             raster_bytes = None
 
