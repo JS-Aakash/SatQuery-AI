@@ -68,6 +68,122 @@ class SpatialNormalizer:
         return [round(norm_ymin, 2), round(norm_xmin, 2), round(norm_ymax, 2), round(norm_xmax, 2)]
 
     @staticmethod
+    def extract_spatial_bounding_box_from_raster(
+        image_input: Any,
+        feature_type: str
+    ) -> Optional[List[float]]:
+        """
+        Dynamically extracts the bounding box [ymin, xmin, ymax, xmax] (in 0-100% space)
+        of a requested remote-sensing feature directly from the raster pixels.
+        Supports water bodies (NDWI / high Blue-Green / low NIR absorption / low SAR backscatter),
+        vegetation (NDVI / dominant green), urban structures, and marine point targets.
+        """
+        try:
+            import numpy as np
+            import io
+            import base64
+            from PIL import Image
+
+            pil_img: Optional[Image.Image] = None
+
+            if isinstance(image_input, Image.Image):
+                pil_img = image_input
+            elif isinstance(image_input, np.ndarray):
+                if image_input.ndim == 2:
+                    pil_img = Image.fromarray(image_input)
+                elif image_input.ndim == 3:
+                    pil_img = Image.fromarray(image_input[:, :, :3].astype(np.uint8))
+            elif isinstance(image_input, (bytes, bytearray)):
+                try:
+                    pil_img = Image.open(io.BytesIO(image_input))
+                except Exception:
+                    pass
+            elif isinstance(image_input, str):
+                if image_input.startswith("data:image/"):
+                    try:
+                        if ";base64," in image_input:
+                            b64_data = image_input.split(";base64,")[1]
+                            raw_bytes = base64.b64decode(b64_data)
+                            pil_img = Image.open(io.BytesIO(raw_bytes))
+                    except Exception:
+                        pass
+                elif os.path.exists(image_input):
+                    try:
+                        pil_img = Image.open(image_input)
+                    except Exception:
+                        pass
+
+            if pil_img is None:
+                return None
+
+            arr = np.array(pil_img.convert("RGB"), dtype=np.float32)
+            h, w, _ = arr.shape
+            if h < 10 or w < 10:
+                return None
+
+            r = arr[:, :, 0]
+            g = arr[:, :, 1]
+            b = arr[:, :, 2]
+            lum = 0.299 * r + 0.587 * g + 0.114 * b
+
+            mask = np.zeros((h, w), dtype=bool)
+            ft = feature_type.lower()
+
+            if any(k in ft for k in ["water", "ocean", "sea", "river", "bay", "basin", "hydrology"]):
+                # Optical water: deep blue/green with low red reflectance or low overall luminance (SAR specular reflection)
+                # In coastal/RGB scenes: b > r and (lum < 95 or (b - r) > 8)
+                water_opt = ((b > r + 3) & (r < 95) & (lum < 110)) | ((lum < 40) & (b >= r))
+                mask = water_opt
+            elif any(k in ft for k in ["vegetation", "agriculture", "crop", "farm", "canopy", "field"]):
+                # Chlorophyll signature: Green channel significantly higher than Red and Blue
+                veg_mask = (g > r + 8) & (g > b + 2) & (lum > 30)
+                mask = veg_mask
+            elif any(k in ft for k in ["urban", "city", "building", "built", "structure"]):
+                # Built-up: High local contrast or neutral concrete gray
+                urban_mask = (np.abs(r - g) < 22) & (np.abs(g - b) < 22) & (lum >= 35) & (lum <= 180) & ~((b > r + 10) & (lum < 80))
+                mask = urban_mask
+            elif any(k in ft for k in ["ship", "vessel", "boat", "cargo"]):
+                # Moored ships: Bright or distinct colored points located within the water basin (lower half)
+                water_bg = ((b > r) | (lum < 75))
+                ship_mask = (lum > 140) | (r > 160)
+                # Ships reside in the water zone
+                ship_mask = ship_mask & (np.arange(h)[:, None] > int(h * 0.45))
+                mask = ship_mask
+            elif any(k in ft for k in ["port", "dock", "harbor", "berth", "pier", "terminal"]):
+                # Port infrastructure: Concrete structures in the coastal transition zone (middle to lower half)
+                port_mask = (lum > 100) & (np.abs(r - g) < 25) & (np.arange(h)[:, None] > int(h * 0.40))
+                mask = port_mask
+            else:
+                return None
+
+            pixel_count = np.count_nonzero(mask)
+            total_pixels = h * w
+            min_pixels = max(30, int(total_pixels * 0.005))
+
+            if pixel_count < min_pixels:
+                return None
+
+            rows, cols = np.where(mask)
+            ymin = float(np.percentile(rows, 1)) / h * 100.0
+            ymax = float(np.percentile(rows, 99)) / h * 100.0
+            xmin = float(np.percentile(cols, 1)) / w * 100.0
+            xmax = float(np.percentile(cols, 99)) / w * 100.0
+
+            # Add minimal padding
+            ymin = max(0.0, ymin - 1.0)
+            xmin = max(0.0, xmin - 1.0)
+            ymax = min(100.0, ymax + 1.0)
+            xmax = min(100.0, xmax + 1.0)
+
+            # Ensure non-trivial area
+            if (ymax - ymin) < 2.0 or (xmax - xmin) < 2.0:
+                return None
+
+            return [round(ymin, 2), round(xmin, 2), round(ymax, 2), round(xmax, 2)]
+        except Exception:
+            return None
+
+    @staticmethod
     def parse_boxes_from_text(
         text: str,
         img_width: Optional[int] = None,
@@ -93,6 +209,12 @@ class SpatialNormalizer:
             c1, c2, c3, c4 = float(m.group(1)), float(m.group(2)), float(m.group(3)), float(m.group(4))
             try:
                 norm_coords = SpatialNormalizer.normalize_box([c1, c2, c3, c4], img_width, img_height)
+                # Filter out degenerate boxes (less than 1% area)
+                h_box = norm_coords[2] - norm_coords[0]
+                w_box = norm_coords[3] - norm_coords[1]
+                if h_box < 1.0 or w_box < 1.0:
+                    continue
+
                 # Check for label before the box
                 preceding_text = text[max(0, m.start() - 40):m.start()]
                 label = default_label

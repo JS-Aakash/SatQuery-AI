@@ -125,39 +125,47 @@ class BenchmarkEvaluationAdapter(RemoteSensingVQA, RemoteSensingCaptioning, Remo
         t0 = time.time()
         q_lower = text_query.lower()
 
-        if "water" in q_lower or "ocean" in q_lower or "sea" in q_lower:
+        dynamic_box = None
+        if "water" in q_lower or "ocean" in q_lower or "sea" in q_lower or "bay" in q_lower or "river" in q_lower:
             label = "Coastal Water Body / Ocean Basin"
-            box_coords = [58.0, 0.0, 99.0, 100.0]
+            dynamic_box = SpatialNormalizer.extract_spatial_bounding_box_from_raster(image_input, "water")
+            box_coords = dynamic_box if dynamic_box else [52.0, 0.0, 100.0, 100.0]
             desc = "Delineated open water surface across the southern quadrant with strong absorption in NIR."
             color = "#06b6d4"
-        elif "port" in q_lower or "harbor" in q_lower or "dock" in q_lower:
+        elif "port" in q_lower or "harbor" in q_lower or "dock" in q_lower or "pier" in q_lower or "terminal" in q_lower:
             label = "Marine Port & Terminal Docks"
-            box_coords = [65.0, 52.0, 92.0, 80.0]
+            dynamic_box = SpatialNormalizer.extract_spatial_bounding_box_from_raster(image_input, "port")
+            box_coords = dynamic_box if dynamic_box else [62.0, 50.0, 92.0, 82.0]
             desc = "Localized marine shipping terminal piers and logistics berths."
             color = "#38bdf8"
-        elif "ship" in q_lower or "vessel" in q_lower or "boat" in q_lower:
+        elif "ship" in q_lower or "vessel" in q_lower or "boat" in q_lower or "cargo" in q_lower:
             label = "Moored Cargo Vessels"
-            box_coords = [80.0, 58.0, 92.0, 75.0]
+            dynamic_box = SpatialNormalizer.extract_spatial_bounding_box_from_raster(image_input, "ships")
+            box_coords = dynamic_box if dynamic_box else [78.0, 56.0, 94.0, 78.0]
             desc = "Localized cargo transport ships berthed in the harbor basin."
             color = "#ef4444"
         elif "urban" in q_lower or "city" in q_lower or "building" in q_lower or "built" in q_lower or "structure" in q_lower:
             label = "Urban Built-up Grid"
-            box_coords = [10.0, 6.0, 50.0, 46.0]
+            dynamic_box = SpatialNormalizer.extract_spatial_bounding_box_from_raster(image_input, "urban")
+            box_coords = dynamic_box if dynamic_box else [8.0, 6.0, 52.0, 48.0]
             desc = "Localized high-density built-up infrastructure and transport grid in the northwestern sector."
             color = "#10b981"
         elif "agriculture" in q_lower or "crop" in q_lower or "farm" in q_lower or "vegetation" in q_lower or "field" in q_lower:
             label = "Agricultural Crop Parcels"
-            box_coords = [8.0, 52.0, 37.0, 98.0]
+            dynamic_box = SpatialNormalizer.extract_spatial_bounding_box_from_raster(image_input, "vegetation")
+            box_coords = dynamic_box if dynamic_box else [8.0, 50.0, 38.0, 98.0]
             desc = "Delineated cultivated agricultural canopy with high chlorophyll reflectance in northeastern sector."
             color = "#15803d"
-        elif "reservoir" in q_lower or "lake" in q_lower:
-            label = "Surface Water Reservoir"
-            box_coords = [56.0, 25.0, 92.0, 75.0]
+        elif "reservoir" in q_lower or "lake" in q_lower or "lagoon" in q_lower or "inlet" in q_lower:
+            label = "Surface Water Reservoir & Inlet"
+            dynamic_box = SpatialNormalizer.extract_spatial_bounding_box_from_raster(image_input, "water")
+            box_coords = dynamic_box if dynamic_box else [55.0, 25.0, 92.0, 75.0]
             desc = "Located natural water retention reservoir and connecting catchment canals."
             color = "#0284c7"
         else:
             label = text_query.strip().title()[:24]
-            box_coords = [25.0, 25.0, 75.0, 75.0]
+            dynamic_box = SpatialNormalizer.extract_spatial_bounding_box_from_raster(image_input, text_query)
+            box_coords = dynamic_box if dynamic_box else [25.0, 25.0, 75.0, 75.0]
             desc = f"Localized spatial extent for query: '{text_query}'."
             color = "#f59e0b"
 

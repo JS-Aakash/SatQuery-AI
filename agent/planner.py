@@ -89,7 +89,7 @@ class AgentQueryPlanner:
             )
 
         # 5. Check for Spatial Grounding / Localization
-        if "highlight" in q or "ground" in q or "where is" in q or "locate" in q or "find the" in q or "bounding box" in q or "box" in q:
+        if any(k in q for k in ["highlight", "ground", "where is", "where are", "locate", "find the", "find", "bounding box", "draw box", "delineate", "show me", "mark"]):
             return QueryPlan(
                 task_type=AgentTaskType.GROUNDING,
                 selected_tool_names=["Grounding"],
