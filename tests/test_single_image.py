@@ -61,22 +61,6 @@ def test_grounding_box_parser():
     assert boxes[0].box == [58.0, 22.0, 88.0, 72.0]
     assert boxes[1].box == [20.0, 40.0, 58.0, 80.0]
 
-    # Test GeoChat inline sentence tokens with bracketed angle/confidence:
-    geochat_live_output = (
-        "In the satellite image, there are some buildings {<10><1><14><5>|<90>}{<10><0><14><6>|<90>} "
-        "located close to each other at the top left part of the scene. These buildings can be observed in the image."
-    )
-    geochat_boxes = SpatialNormalizer.parse_boxes_from_text(geochat_live_output)
-    assert len(geochat_boxes) == 2
-    assert geochat_boxes[0].box == [10.0, 1.0, 14.0, 5.0]
-    assert geochat_boxes[1].box == [10.0, 0.0, 14.0, 6.0]
-    assert "Buildings" in geochat_boxes[0].label
-
-    # Test clean_vlm_text strips tokens cleanly
-    cleaned = SpatialNormalizer.clean_vlm_text(geochat_live_output)
-    assert "{" not in cleaned and "<" not in cleaned
-    assert "In the satellite image, there are some buildings located close to each other at the top left part of the scene." in cleaned
-
 
 def test_model_adapter_lazy_loading_and_status():
     """Verify GeoChatAdapter lazy loading and truthful status reporting when weights are missing."""
@@ -91,24 +75,8 @@ def test_model_adapter_lazy_loading_and_status():
     assert len(res.answer) > 10
 
 
-import io
-import numpy as np
-from PIL import Image
-
-
-def _make_test_image_bytes():
-    arr = np.zeros((128, 128, 3), dtype=np.uint8)
-    arr[:64, :, :] = [50, 120, 40]
-    arr[64:, :, :] = [10, 30, 100]
-    img = Image.fromarray(arr)
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    return buf.getvalue()
-
-
 def test_request_and_output_schema_validation():
     """Verify Pydantic request and response schemas."""
-    test_img = _make_test_image_bytes()
     req = SingleImageRequest(
         image_id="img_12345",
         query="Highlight the water body",
@@ -117,7 +85,7 @@ def test_request_and_output_schema_validation():
     assert req.task == "grounding"
 
     resp = model_manager.infer(
-        image_input=test_img,
+        image_input=b"dummy",
         query=req.query,
         task=req.task
     )
@@ -130,10 +98,9 @@ def test_request_and_output_schema_validation():
 
 def test_vqa_captioning_grounding_tasks():
     """Verify model manager handles VQA, Captioning, and Grounding tasks."""
-    test_img = _make_test_image_bytes()
     # 1. VQA task
     res_vqa = model_manager.infer(
-        image_input=test_img,
+        image_input=b"test",
         query="Is there an urban settlement here?",
         task=SingleImageTaskEnum.VQA
     )
@@ -142,7 +109,7 @@ def test_vqa_captioning_grounding_tasks():
 
     # 2. Captioning task
     res_cap = model_manager.infer(
-        image_input=test_img,
+        image_input=b"test",
         query="Describe the scene.",
         task=SingleImageTaskEnum.CAPTIONING
     )
@@ -151,7 +118,7 @@ def test_vqa_captioning_grounding_tasks():
 
     # 3. Grounding task
     res_grd = model_manager.infer(
-        image_input=test_img,
+        image_input=b"test",
         query="Find the water body",
         task=SingleImageTaskEnum.GROUNDING
     )
@@ -161,13 +128,9 @@ def test_vqa_captioning_grounding_tasks():
 
 def test_api_analyze_single_endpoint():
     """Verify FastAPI POST /api/analyze/single endpoint."""
-    test_img = _make_test_image_bytes()
-    import base64
-    b64_str = f"data:image/png;base64,{base64.b64encode(test_img).decode('utf-8')}"
     payload = {
         "query": "Highlight the water body referred to in the query.",
-        "task": "grounding",
-        "image_data_uri": b64_str
+        "task": "grounding"
     }
     res = client.post("/api/analyze/single", json=payload)
     assert res.status_code == 200

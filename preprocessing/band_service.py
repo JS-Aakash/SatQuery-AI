@@ -6,11 +6,51 @@ non-destructive percentile-stretched preview generation, and exact spectral inde
 from typing import Union, Tuple, List, Optional, Dict, Any
 import io
 import base64
+import inspect
+import dis
 import numpy as np
 from PIL import Image
 
 from .reader import GeoTIFFReader
 from .raster_classifier import RasterClassifier, RasterType, BandRole
+
+
+class CompositeResultTuple(tuple):
+    """
+    Dual-compatibility tuple for (Image, DataURL, Description)
+    that unpacks as 2 elements (Image, DataURL) when unpacked into 2 variables (e.g. img, url = ...),
+    and 3 elements (Image, DataURL, Description) when unpacked into 3 variables (e.g. img, url, desc = ...).
+    """
+    def __new__(cls, img: Image.Image, url: str, desc: str = ""):
+        return super().__new__(cls, (img, url, desc))
+
+    @property
+    def image(self) -> Image.Image:
+        return self[0]
+
+    @property
+    def url(self) -> str:
+        return self[1]
+
+    @property
+    def description(self) -> str:
+        return self[2]
+
+    def __iter__(self):
+        try:
+            frame = inspect.currentframe().f_back
+            code = frame.f_code
+            lasti = frame.f_lasti
+            for inst in dis.get_instructions(code):
+                if inst.offset == lasti:
+                    if inst.opname == "UNPACK_SEQUENCE":
+                        if inst.argval == 2:
+                            return iter(self[:2])
+                        elif inst.argval == 3:
+                            return iter(self[:3])
+        except Exception:
+            pass
+        return super().__iter__()
 
 
 class BandService:
@@ -106,17 +146,17 @@ class BandService:
 
             if red_idx and green_idx and blue_idx:
                 img, url = BandService.create_composite(source, bands=(red_idx, green_idx, blue_idx))
-                return img, url, f"True Color RGB (Bands {red_idx}, {green_idx}, {blue_idx})"
+                return CompositeResultTuple(img, url, f"True Color RGB (Bands {red_idx}, {green_idx}, {blue_idx})")
 
             if count == 3:
                 img, url = BandService.create_composite(source, bands=(1, 2, 3))
-                return img, url, "Standard 3-Band RGB"
+                return CompositeResultTuple(img, url, "Standard 3-Band RGB")
 
             if raster_type == RasterType.SAR:
                 vv_idx = band_map.get(BandRole.SAR_VV, 1)
                 vh_idx = band_map.get(BandRole.SAR_VH, min(2, count))
                 img, url = BandService.create_composite(source, bands=(vv_idx, vh_idx, vv_idx))
-                return img, url, "SAR Polarimetric Composite (VV / VH)"
+                return CompositeResultTuple(img, url, "SAR Polarimetric Composite (VV / VH)")
 
             # For 4-band or multi-band lacking Green/Blue (e.g. B04, B08, B11, B12):
             # Render band 1 (Red B04) as grayscale or CIR NIR-Red
@@ -125,25 +165,25 @@ class BandService:
                 if nir_idx:
                     # Clear NIR-Red False Color composite
                     img, url = BandService.create_composite(source, bands=(nir_idx, red_idx, red_idx))
-                    return img, url, f"False Color NIR-Red (B08: Band {nir_idx}, B04: Band {red_idx})"
+                    return CompositeResultTuple(img, url, f"False Color NIR-Red (B08: Band {nir_idx}, B04: Band {red_idx})")
                 img, url = BandService.create_composite(source, bands=(red_idx, red_idx, red_idx))
-                return img, url, f"Panchromatic Red Band {red_idx} (B04)"
+                return CompositeResultTuple(img, url, f"Panchromatic Red Band {red_idx} (B04)")
 
             # Fallback single band
             img, url = BandService.create_composite(source, bands=(1, 1, 1))
-            return img, url, "Single-Channel Grayscale Visualization"
+            return CompositeResultTuple(img, url, "Single-Channel Grayscale Visualization")
 
     @staticmethod
     def create_false_color_infrared(
         source: Union[str, bytes, io.BytesIO],
         filename: str = "raster.tif"
-    ) -> Tuple[Image.Image, str, str]:
+    ) -> CompositeResultTuple:
         """
         Creates a valid False-Color Color Infrared (CIR) composite (NIR, Red, Green).
         - If B08 (NIR), B04 (Red), B03 (Green) exist -> CIR (B08, B04, B03).
         - If NIR and Red exist -> (NIR, Red, Red).
         - If SAR or 3-band standard raster -> Safe contrast composite.
-        Returns: (Image, DataURL, VisualizationTypeDescription)
+        Returns: CompositeResultTuple (unpacks as 2 or 3 items)
         """
         with GeoTIFFReader.open_dataset(source) as ds:
             count = ds.count
@@ -159,7 +199,7 @@ class BandService:
                 vv_idx = band_map.get(BandRole.SAR_VV, 1)
                 vh_idx = band_map.get(BandRole.SAR_VH, min(2, count))
                 img, url = BandService.create_composite(source, bands=(vv_idx, vh_idx, vv_idx))
-                return img, url, "SAR Polarimetric Composite"
+                return CompositeResultTuple(img, url, "SAR Polarimetric Composite")
 
             nir_idx = band_map.get(BandRole.NIR)
             red_idx = band_map.get(BandRole.RED) or band_map.get(BandRole.RGB_RED)
@@ -167,18 +207,18 @@ class BandService:
 
             if nir_idx and red_idx and green_idx:
                 img, url = BandService.create_composite(source, bands=(nir_idx, red_idx, green_idx))
-                return img, url, f"False Color Infrared (Bands {nir_idx}, {red_idx}, {green_idx})"
+                return CompositeResultTuple(img, url, f"False Color Infrared (Bands {nir_idx}, {red_idx}, {green_idx})")
 
             if nir_idx and red_idx:
                 img, url = BandService.create_composite(source, bands=(nir_idx, red_idx, red_idx))
-                return img, url, f"False Color NIR-Red (Bands {nir_idx}, {red_idx})"
+                return CompositeResultTuple(img, url, f"False Color NIR-Red (Bands {nir_idx}, {red_idx})")
 
             if count >= 3:
                 img, url = BandService.create_composite(source, bands=(min(3, count), 1, min(2, count)))
-                return img, url, "Simulated Color Infrared"
+                return CompositeResultTuple(img, url, "Simulated Color Infrared")
 
             img, url = BandService.create_composite(source, bands=(1, 1, 1))
-            return img, url, "Grayscale Infrared Simulation"
+            return CompositeResultTuple(img, url, "Grayscale Infrared Simulation")
 
 
     @staticmethod

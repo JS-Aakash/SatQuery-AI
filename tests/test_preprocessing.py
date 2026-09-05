@@ -153,12 +153,12 @@ def test_image_validator(sample_optical_geotiff_bytes, sample_sar_geotiff_bytes)
 
 def test_band_service(sample_optical_geotiff_bytes):
     """Verify natural RGB and false-color composite generation without altering raw data."""
-    img_rgb, url_rgb, _ = BandService.create_true_color_rgb(sample_optical_geotiff_bytes)
+    img_rgb, url_rgb = BandService.create_true_color_rgb(sample_optical_geotiff_bytes)
     assert img_rgb.size == (128, 128)
     assert img_rgb.mode == "RGB"
     assert url_rgb.startswith("data:image/png;base64,")
 
-    img_cir, url_cir, _ = BandService.create_false_color_infrared(sample_optical_geotiff_bytes)
+    img_cir, url_cir = BandService.create_false_color_infrared(sample_optical_geotiff_bytes)
     assert img_cir.size == (128, 128)
     assert img_cir.mode == "RGB"
 

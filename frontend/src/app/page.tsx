@@ -178,8 +178,8 @@ export default function Home() {
         activeTab={activeTab}
         onTabChange={(tab) => {
           setActiveTab(tab);
-          if (tab === "reports" && analysisResult?.analysis_id) {
-            handleOpenReport(analysisResult.analysis_id);
+          if (tab === "reports") {
+            handleOpenReport(analysisResult?.analysis_id || "demo-analysis");
           }
         }}
         onOpenSystemStatus={() => setIsSystemStatusOpen(true)}

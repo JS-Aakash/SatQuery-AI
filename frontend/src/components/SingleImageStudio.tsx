@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useRef } from "react";
 import {
   UploadCloud,
   FileCheck,
@@ -73,12 +73,6 @@ export const SingleImageStudio: React.FC<SingleImageStudioProps> = ({
   const [isBuildingMultispectral, setIsBuildingMultispectral] = useState(false);
   const [builtMeta, setBuiltMeta] = useState<ImageMetadata | null>(null);
 
-  useEffect(() => {
-    if (initialMetadata) {
-      setImageMeta(initialMetadata);
-    }
-  }, [initialMetadata]);
-
   // Multispectral builder single-band file states
   const [builderFiles, setBuilderFiles] = useState<{
     b02?: File;
@@ -98,16 +92,7 @@ export const SingleImageStudio: React.FC<SingleImageStudioProps> = ({
 
     try {
       const res = await uploadSingleGeoTIFF(file);
-      let meta = res.metadata;
-      if (!meta.preview_url && meta.id) {
-        const isSar = meta.modality === "SAR" || (meta.raster_type && meta.raster_type.includes("SAR"));
-        const defaultComp = isSar ? "sar_db" : "true_color";
-        const autoPreview = await fetchCompositePreview(meta.id, defaultComp);
-        if (autoPreview) {
-          meta = { ...meta, preview_url: autoPreview };
-        }
-      }
-      setImageMeta(meta);
+      setImageMeta(res.metadata);
       setIsUploading(false);
     } catch (err: any) {
       setIsUploading(false);

@@ -48,7 +48,6 @@ class EvidenceTag(BaseModel):
 class SingleImageRequest(BaseModel):
     image_id: Optional[str] = Field(default=None, description="Cached image ID from /api/uploads/file")
     image_base64: Optional[str] = Field(default=None, description="Base64 encoded PNG/JPEG image buffer")
-    image_data_uri: Optional[str] = Field(default=None, description="Data URI string e.g. data:image/png;base64,...")
     query: str = Field(default="", description="Question or text grounding query (e.g. 'Find potentially vacant land')")
     task: SingleImageTaskEnum = Field(default=SingleImageTaskEnum.AUTO, description="Target task: vqa, captioning, grounding, auto")
     bands: Optional[List[int]] = Field(default=None, description="Custom 3-band combination for multispectral rasters")

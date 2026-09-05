@@ -20,19 +20,19 @@ logger = logging.getLogger("satquery.app")
 async def lifespan(app: FastAPI):
     """
     Application lifespan manager.
-    Auto-warms up GeoChat-7B in GPU VRAM on startup in a non-blocking background thread.
+    Proactively warms up model weights on startup if weights exist on disk.
     """
-    def _warmup_worker():
+    def _warmup():
         try:
-            from models.single_image.manager import model_manager
-            if model_manager.adapter.is_weights_available():
-                logger.info("Auto-warming up GeoChat-7B into GPU VRAM on backend startup...")
-                model_manager.preload()
-                logger.info("GeoChat-7B model successfully warm and resident in GPU memory.")
+            from models.single_image.adapter import GeoChatAdapter
+            adapter = GeoChatAdapter()
+            if adapter.is_weights_available() and not adapter.is_loaded:
+                logger.info("Proactively warming up GeoChat model into GPU VRAM on startup...")
+                adapter.load_model()
         except Exception as e:
             logger.warning(f"Startup model warmup note: {e}")
 
-    threading.Thread(target=_warmup_worker, daemon=True).start()
+    threading.Thread(target=_warmup, daemon=True).start()
     yield
 
 

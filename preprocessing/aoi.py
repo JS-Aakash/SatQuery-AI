@@ -99,7 +99,8 @@ class AOIService:
             cropped_bytes = memfile.read()
 
         # Generate web-safe preview from cropped raster
-        _, preview_data_url, _ = BandService.create_true_color_rgb(cropped_bytes)
+        res_preview = BandService.create_true_color_rgb(cropped_bytes)
+        preview_data_url = res_preview[1] if isinstance(res_preview, (tuple, list)) else res_preview
 
         cropped_meta = {
             "width": out_image.shape[2],

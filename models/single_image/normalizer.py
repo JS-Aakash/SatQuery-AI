@@ -5,6 +5,7 @@ or absolute pixel coordinates) into SatQuery AI's standardized [ymin, xmin, ymax
 """
 import re
 import uuid
+import os;
 from typing import List, Dict, Any, Tuple, Optional
 from .schemas import GroundingBoundingBox
 
@@ -135,10 +136,15 @@ class SpatialNormalizer:
                 # Dense canopy: positive excess green with vegetation chlorophyll absorption
                 veg_dense = (exg > 8.0) & (g > r) & (lum < 165)
                 mask = veg_dense if np.any(veg_dense) else ((g > r + 4) & (g > b))
-            elif any(k in ft for k in ["playground", "stadium", "sports", "running track"]):
-                # Sports stadiums & distinct running tracks (terracotta / brick red athletic oval or turf court)
-                track_mask = (r > 135) & (g > 65) & (b < 90) & (r - g > 30) & (r - b > 40)
-                mask = track_mask
+            elif any(k in ft for k in ["playground", "stadium", "sports", "track", "court", "pitch", "open ground", "cleared ground", "ground", "field", "baseball"]):
+                # Playgrounds, sports fields & stadiums:
+                # 1. Open turf grass (high excess green, smooth brightness)
+                turf_mask = (2.0 * g - r - b > 3.0) & (g > r) & (lum > 70) & (lum < 195)
+                # 2. Cleared infield/track/soil (reddish/tan clay diamond or running track)
+                infield_mask = (r > 100) & (g > 70) & (r >= g - 8) & (b < 145) & (lum > 75)
+                # 3. Running track (brick red / terracotta / polyurethane)
+                track_mask = (r > 110) & (g > 70) & (b < 115) & (r > g + 10)
+                mask = turf_mask | infield_mask | track_mask
             elif any(k in ft for k in ["vegetation", "agriculture", "crop", "farm", "field"]):
                 exg = 2.0 * g - r - b
                 mask = (exg > 5.0) | ((g > r + 5) & (g > b))
@@ -161,7 +167,7 @@ class SpatialNormalizer:
                 return None
 
             pixel_count = np.count_nonzero(mask)
-            if pixel_count < 25:
+            if pixel_count < 15:
                 return None
 
             # Hotspot Density Clustering:
@@ -213,10 +219,9 @@ class SpatialNormalizer:
             ymax = min(100.0, ymax + 1.5)
             xmax = min(100.0, xmax + 1.5)
 
-            # Prevent returning full canvas bounding box for localized targets
-            if (ymax - ymin) > 85.0 and (xmax - xmin) > 85.0:
-                if any(t in ft for t in ["playground", "stadium", "sports", "ship", "port"]):
-                    return None
+            # Prevent collapsing to full image unless image is truly uniform
+            if (ymax - ymin) > 95.0 and (xmax - xmin) > 95.0:
+                # Find the peak center quadrant
                 peak_gy, peak_gx = np.unravel_index(np.argmax(grid_counts), grid_counts.shape)
                 ymin = max(0.0, (peak_gy - 2) * gh / h * 100.0)
                 ymax = min(100.0, (peak_gy + 3) * gh / h * 100.0)
@@ -237,19 +242,15 @@ class SpatialNormalizer:
             return ""
 
         cleaned = text
-        # 1. Remove coordinate blocks like {<56><57><60><65>|<90>} or {<56><57><60><65>|90} or {<56><57><60><65>}
-        cleaned = re.sub(r'\{(?:\s*<\d+>\s*){4}(?:\s*\|\s*<?\d+>?)?\s*\}', '', cleaned)
-        # 2. Remove any remaining {<...>} coordinate blocks
-        cleaned = re.sub(r'\{(?:\s*<\d+>\s*)+\}', '', cleaned)
-        # 3. Remove <delim> tags
+        # 1. Remove coordinate blocks like {<56><57><60><65>|90} or {<56><57><60><65>}
+        cleaned = re.sub(r'\{(?:\s*<\d+>\s*){4}(?:\|\s*\d+\s*)?\}', '', cleaned)
+        # 2. Remove <delim> tags
         cleaned = re.sub(r'<delim>', '', cleaned)
-        # 4. Unwrap <p>label</p> to label
+        # 3. Unwrap <p>label</p> to label
         cleaned = re.sub(r'<p>(.*?)</p>', r'\1', cleaned)
-        # 5. Remove leftover standalone coordinate tokens or bracket tags
+        # 4. Remove leftover standalone coordinate tokens or bracket tags
         cleaned = re.sub(r'<box>.*?</box>', '', cleaned)
-        # 6. Clean up chat prefixes if any
-        cleaned = re.sub(r'^(?:USER:|ASSISTANT:|A chat between.*?:)\s*', '', cleaned, flags=re.IGNORECASE)
-        # 7. Clean up extra spaces and punctuation artifacts
+        # 5. Clean up extra spaces and punctuation artifacts
         cleaned = re.sub(r'\s{2,}', ' ', cleaned)
         cleaned = re.sub(r'\s+([.,;:!?])', r'\1', cleaned)
         return cleaned.strip()
@@ -265,38 +266,27 @@ class SpatialNormalizer:
         Extracts bounding box patterns from VLM generated text.
         Supports:
         - GeoChat native tokens: `<p>some buildings</p> {<56><57><60><65>|<90>}<delim>{<57><49><61><57>|<90>}`
-        - GeoChat inline tokens: `there are buildings {<10><1><14><5>|<90>}{<10><0><14><6>|<90>}`
         - Standard token brackets: `[150, 200, 650, 750]`
         - `<box>[150, 200, 650, 750]</box>`
         """
-        if not text:
-            return []
-
         boxes: List[GroundingBoundingBox] = []
-        color_palette = ["#10b981", "#06b6d4", "#38bdf8", "#f59e0b", "#ec4899", "#8b5cf6", "#14b8a6", "#f97316"]
+        color_palette = ["#10b981", "#06b6d4", "#38bdf8", "#f59e0b", "#ec4899", "#8b5cf6", "#14b8a6"]
         idx = 0
 
-        # Pattern for single GeoChat coordinate block: {<c1><c2><c3><c4>|<?score?>?}
-        single_geochat_pattern = re.compile(
-            r'\{\s*<(\d+)>\s*<(\d+)>\s*<(\d+)>\s*<(\d+)>(?:\s*\|\s*<?(\d+)>?)?\s*\}'
-        )
-
-        # 1. Parse GeoChat <p>label</p> phrase blocks
-        geochat_phrase_pattern = re.compile(
-            r'<p>(.*?)</p>\s*([^{<]*\{(?:\s*<\d+>\s*){4}(?:\s*\|\s*<?\d+>?)?\s*\}(?:(?:\s*<delim>\s*|\s*)\{(?:\s*<\d+>\s*){4}(?:\s*\|\s*<?\d+>?)?\s*\})*)'
-        )
-        
-        parsed_spans = []
-        for match in geochat_phrase_pattern.finditer(text):
+        # 1. Parse GeoChat native format: <p>label</p> followed by one or more {<c1><c2><c3><c4>|score}
+        geochat_phrase_pattern = r'<p>(.*?)</p>\s*([^{<]*\{(?:\s*<\d+>\s*){4}(?:\|\s*\d+\s*)?\}(?:<delim>\{(?:\s*<\d+>\s*){4}(?:\|\s*\d+\s*)?\})*)'
+        for match in re.finditer(geochat_phrase_pattern, text):
             phrase_label = match.group(1).strip() or default_label
             box_block = match.group(2)
-            parsed_spans.append(match.span())
             
-            for b_match in single_geochat_pattern.finditer(box_block):
+            # Extract each box in the block
+            single_box_pattern = r'\{\s*<(\d+)>\s*<(\d+)>\s*<(\d+)>\s*<(\d+)>(?:\s*\|\s*(\d+))?\s*\}'
+            for b_match in re.finditer(single_box_pattern, box_block):
                 y1, x1, y2, x2 = float(b_match.group(1)), float(b_match.group(2)), float(b_match.group(3)), float(b_match.group(4))
-                conf_val = float(b_match.group(5)) / 100.0 if b_match.group(5) else 0.94
+                conf_val = float(b_match.group(5)) / 100.0 if b_match.group(5) else 0.92
                 try:
                     norm_coords = SpatialNormalizer.normalize_box([y1, x1, y2, x2], img_width, img_height, coord_format="geochat")
+                    # Filter out degenerate boxes (less than 0.5% area)
                     h_box = abs(norm_coords[2] - norm_coords[0])
                     w_box = abs(norm_coords[3] - norm_coords[1])
                     if h_box < 0.5 and w_box < 0.5:
@@ -305,7 +295,7 @@ class SpatialNormalizer:
                     box_id = f"box_{uuid.uuid4().hex[:6]}"
                     boxes.append(GroundingBoundingBox(
                         id=box_id,
-                        label=phrase_label.title() if len(phrase_label) <= 35 else phrase_label,
+                        label=phrase_label,
                         box=norm_coords,
                         confidence=round(conf_val, 2),
                         color=color_palette[idx % len(color_palette)]
@@ -314,73 +304,54 @@ class SpatialNormalizer:
                 except Exception:
                     continue
 
-        # 2. Parse inline GeoChat boxes without <p> wrappers
-        for b_match in single_geochat_pattern.finditer(text):
-            m_start, m_end = b_match.span()
-            if any(start <= m_start and m_end <= end for start, end in parsed_spans):
-                continue
+        # 2. Standalone GeoChat boxes without <p> wrappers
+        if not boxes:
+            standalone_geochat = r'\{\s*<(\d+)>\s*<(\d+)>\s*<(\d+)>\s*<(\d+)>(?:\s*\|\s*(\d+))?\s*\}'
+            for b_match in re.finditer(standalone_geochat, text):
+                y1, x1, y2, x2 = float(b_match.group(1)), float(b_match.group(2)), float(b_match.group(3)), float(b_match.group(4))
+                conf_val = float(b_match.group(5)) / 100.0 if b_match.group(5) else 0.92
+                try:
+                    norm_coords = SpatialNormalizer.normalize_box([y1, x1, y2, x2], img_width, img_height, coord_format="geochat")
+                    box_id = f"box_{uuid.uuid4().hex[:6]}"
+                    boxes.append(GroundingBoundingBox(
+                        id=box_id,
+                        label=default_label,
+                        box=norm_coords,
+                        confidence=round(conf_val, 2),
+                        color=color_palette[idx % len(color_palette)]
+                    ))
+                    idx += 1
+                except Exception:
+                    continue
 
-            y1, x1, y2, x2 = float(b_match.group(1)), float(b_match.group(2)), float(b_match.group(3)), float(b_match.group(4))
-            conf_val = float(b_match.group(5)) / 100.0 if b_match.group(5) else 0.94
-
-            # Infer label from preceding text
-            preceding_text = text[max(0, m_start - 60):m_start].strip()
-            label = default_label
-            label_match = re.search(r'(?:there (?:is|are)|contains?|shows?|observe|detected?|found|a|an|some|the)?\s*([a-zA-Z\s\-]{3,30})$', preceding_text, flags=re.IGNORECASE)
-            if label_match and len(label_match.group(1).strip()) >= 3:
-                cand = label_match.group(1).strip()
-                cand_clean = re.sub(r'^(?:is|are|a|an|the|some|of|in)\s+', '', cand, flags=re.IGNORECASE).strip()
-                if len(cand_clean) >= 3:
-                    label = cand_clean.title()
-
+        # 3. Standard Bracket pattern: [y1, x1, y2, x2]
+        bracket_pattern = r'\[\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*\]'
+        for m in re.finditer(bracket_pattern, text):
+            c1, c2, c3, c4 = float(m.group(1)), float(m.group(2)), float(m.group(3)), float(m.group(4))
             try:
-                norm_coords = SpatialNormalizer.normalize_box([y1, x1, y2, x2], img_width, img_height, coord_format="geochat")
+                norm_coords = SpatialNormalizer.normalize_box([c1, c2, c3, c4], img_width, img_height)
                 h_box = abs(norm_coords[2] - norm_coords[0])
                 w_box = abs(norm_coords[3] - norm_coords[1])
                 if h_box < 0.5 and w_box < 0.5:
                     continue
+
+                preceding_text = text[max(0, m.start() - 40):m.start()]
+                label = default_label
+                label_match = re.search(r'([A-Za-z\s]+)(?:is located at|at|:)?\s*$', preceding_text)
+                if label_match and len(label_match.group(1).strip()) > 2:
+                    label = label_match.group(1).strip()
 
                 box_id = f"box_{uuid.uuid4().hex[:6]}"
                 boxes.append(GroundingBoundingBox(
                     id=box_id,
                     label=label,
                     box=norm_coords,
-                    confidence=round(conf_val, 2),
+                    confidence=0.92,
                     color=color_palette[idx % len(color_palette)]
                 ))
                 idx += 1
             except Exception:
                 continue
-
-        # 3. Standard Bracket pattern: [y1, x1, y2, x2]
-        if not boxes:
-            bracket_pattern = r'\[\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*\]'
-            for m in re.finditer(bracket_pattern, text):
-                c1, c2, c3, c4 = float(m.group(1)), float(m.group(2)), float(m.group(3)), float(m.group(4))
-                try:
-                    norm_coords = SpatialNormalizer.normalize_box([c1, c2, c3, c4], img_width, img_height)
-                    h_box = abs(norm_coords[2] - norm_coords[0])
-                    w_box = abs(norm_coords[3] - norm_coords[1])
-                    if h_box < 0.5 and w_box < 0.5:
-                        continue
-
-                    preceding_text = text[max(0, m.start() - 40):m.start()]
-                    label = default_label
-                    label_match = re.search(r'([A-Za-z\s]+)(?:is located at|at|:)?\s*$', preceding_text)
-                    if label_match and len(label_match.group(1).strip()) > 2:
-                        label = label_match.group(1).strip().title()
-
-                    box_id = f"box_{uuid.uuid4().hex[:6]}"
-                    boxes.append(GroundingBoundingBox(
-                        id=box_id,
-                        label=label,
-                        box=norm_coords,
-                        confidence=0.92,
-                        color=color_palette[idx % len(color_palette)]
-                    ))
-                    idx += 1
-                except Exception:
-                    continue
 
         return boxes
 

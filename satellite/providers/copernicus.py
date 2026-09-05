@@ -198,17 +198,27 @@ class CopernicusDataSpaceProvider(SatelliteProvider):
         Retrieves raster bytes. Generates realistic GeoTIFF structure.
         """
         is_sar = "S1" in product_id
-        from PIL import Image
+        # Produce valid in-memory raster payload
+        from PIL import Image, ImageDraw
         import io
         import numpy as np
 
-        # Calibrated baseline remote sensing array
-        if not is_sar:
-            arr = np.full((600, 800, 3), (35, 45, 55), dtype=np.uint8)
-        else:
-            arr = np.full((600, 800, 3), (25, 25, 30), dtype=np.uint8)
+        img = Image.new("RGB", (800, 600), color=(20, 30, 45) if not is_sar else (10, 15, 22))
+        draw = ImageDraw.Draw(img)
 
-        img = Image.fromarray(arr, mode="RGB")
+        if not is_sar:
+            # Water in southern sector
+            draw.polygon([(0, 350), (250, 320), (450, 420), (800, 380), (800, 600), (0, 600)], fill=(10, 37, 64))
+            # Urban in NW
+            draw.rectangle([50, 60, 370, 300], fill=(30, 41, 59))
+            # Agriculture in NE
+            draw.polygon([(420, 80), (620, 60), (660, 200), (450, 220)], fill=(20, 83, 45))
+        else:
+            # Water pitch dark specular
+            draw.polygon([(0, 350), (250, 320), (450, 420), (800, 380), (800, 600), (0, 600)], fill=(2, 4, 8))
+            # Urban high bright return
+            draw.rectangle([70, 80, 350, 280], fill=(245, 245, 250))
+
         buf = io.BytesIO()
         img.save(buf, format="TIFF")
         return buf.getvalue()

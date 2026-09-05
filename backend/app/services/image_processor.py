@@ -53,7 +53,8 @@ class DefaultImageProcessor(ImageProcessor):
                         if meta["modality"] == "SAR":
                             _, preview_url = SARPreprocessor.create_sar_preview(sample_bytes)
                         else:
-                            _, preview_url, _ = BandService.create_true_color_rgb(sample_bytes, filename=filename)
+                            res_rgb = BandService.create_true_color_rgb(sample_bytes)
+                            preview_url = res_rgb[1] if isinstance(res_rgb, (tuple, list)) else res_rgb
                     except Exception:
                         preview_url = None
 

@@ -493,21 +493,9 @@ def analyze_single_image(request: SingleImageRequest):
     if request.image_id:
         raster_bytes = RASTER_CACHE.get(request.image_id)
 
-    if not raster_bytes and getattr(request, "image_data_uri", None):
-        try:
-            uri = request.image_data_uri
-            if "," in uri:
-                uri = uri.split(",", 1)[1]
-            raster_bytes = base64.b64decode(uri)
-        except Exception:
-            raster_bytes = None
-
     if not raster_bytes and request.image_base64:
         try:
-            b64_str = request.image_base64
-            if "," in b64_str:
-                b64_str = b64_str.split(",", 1)[1]
-            raster_bytes = base64.b64decode(b64_str)
+            raster_bytes = base64.b64decode(request.image_base64)
         except Exception:
             raster_bytes = None
 
