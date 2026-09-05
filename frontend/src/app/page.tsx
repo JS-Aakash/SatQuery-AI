@@ -21,6 +21,7 @@ import { TopNav } from "../components/TopNav";
 import { UploadZone } from "../components/UploadZone";
 import { SatelliteSearch } from "../components/SatelliteSearch";
 import { MapAOI } from "../components/MapAOI";
+import CopernicusExplorer from "../components/CopernicusExplorer";
 import { QueryBox } from "../components/QueryBox";
 import { ImageryViewer } from "../components/ImageryViewer";
 import { AIAnswerPanel } from "../components/AIAnswerPanel";
@@ -50,8 +51,8 @@ export default function Home() {
   const [backendOnline, setBackendOnline] = useState(false);
   const [latencyMs, setLatencyMs] = useState(28);
 
-  // Input modes: "upload" | "search" | "aoi"
-  const [inputMode, setInputMode] = useState<"upload" | "search" | "aoi">("upload");
+  // Input modes: "upload" | "copernicus" | "search" | "aoi"
+  const [inputMode, setInputMode] = useState<"upload" | "copernicus" | "search" | "aoi">("upload");
 
   // Imagery states
   const [primaryImage, setPrimaryImage] = useState<ImageMetadata | null>(PRESET_SCENARIOS[0].imageA);
@@ -274,49 +275,66 @@ export default function Home() {
                 /* View 2: Analysis Setup Workspace (3 Input Modes + Query Interface) */
                 <div className="space-y-6">
                   {/* Mode Selector Tabs */}
-                  <div className="flex items-center space-x-2 border-b border-slate-800 pb-2">
+                  <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 pb-2">
                     <button
                       onClick={() => setInputMode("upload")}
                       className={cn(
-                        "px-4 py-2 rounded-md text-xs font-mono font-medium transition-all flex items-center space-x-2",
+                        "px-3.5 py-2 rounded-md text-xs font-mono font-medium transition-all flex items-center space-x-2",
                         inputMode === "upload"
                           ? "bg-slate-800 text-emerald-400 border border-emerald-500/40 shadow-sm"
                           : "text-slate-400 hover:text-slate-200 hover:bg-slate-900"
                       )}
                     >
                       <Upload className="w-3.5 h-3.5" />
-                      <span>1. Upload Imagery (GeoTIFF / PNG)</span>
+                      <span>1. Upload Imagery</span>
+                    </button>
+
+                    <button
+                      onClick={() => setInputMode("copernicus")}
+                      className={cn(
+                        "px-3.5 py-2 rounded-md text-xs font-mono font-medium transition-all flex items-center space-x-2",
+                        inputMode === "copernicus"
+                          ? "bg-emerald-950/60 text-emerald-300 border border-emerald-500/50 shadow-sm shadow-emerald-950/40 font-bold"
+                          : "text-slate-400 hover:text-emerald-400 hover:bg-slate-900"
+                      )}
+                    >
+                      <Satellite className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>2. Copernicus Data Space (Sentinel-2 / NDVI / Map)</span>
                     </button>
 
                     <button
                       onClick={() => setInputMode("search")}
                       className={cn(
-                        "px-4 py-2 rounded-md text-xs font-mono font-medium transition-all flex items-center space-x-2",
+                        "px-3.5 py-2 rounded-md text-xs font-mono font-medium transition-all flex items-center space-x-2",
                         inputMode === "search"
-                          ? "bg-slate-800 text-emerald-400 border border-emerald-500/40 shadow-sm"
+                          ? "bg-slate-800 text-cyan-400 border border-cyan-500/40 shadow-sm"
                           : "text-slate-400 hover:text-slate-200 hover:bg-slate-900"
                       )}
                     >
                       <Search className="w-3.5 h-3.5" />
-                      <span>2. Satellite Discovery Search</span>
+                      <span>3. Auto Catalog Search</span>
                     </button>
 
                     <button
                       onClick={() => setInputMode("aoi")}
                       className={cn(
-                        "px-4 py-2 rounded-md text-xs font-mono font-medium transition-all flex items-center space-x-2",
+                        "px-3.5 py-2 rounded-md text-xs font-mono font-medium transition-all flex items-center space-x-2",
                         inputMode === "aoi"
-                          ? "bg-slate-800 text-emerald-400 border border-emerald-500/40 shadow-sm"
+                          ? "bg-slate-800 text-amber-400 border border-amber-500/40 shadow-sm"
                           : "text-slate-400 hover:text-slate-200 hover:bg-slate-900"
                       )}
                     >
                       <MapPin className="w-3.5 h-3.5" />
-                      <span>3. Interactive Map / AOI</span>
+                      <span>4. AOI Definition</span>
                     </button>
                   </div>
 
                   {/* Mode Content Panes */}
                   <div className="bg-[#090e1a]/80 border border-slate-800/80 rounded-xl p-5 shadow-xl">
+                    {inputMode === "copernicus" && (
+                      <CopernicusExplorer />
+                    )}
+
                     {inputMode === "upload" && (
                       <UploadZone
                         primaryImage={primaryImage}
