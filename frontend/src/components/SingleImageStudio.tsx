@@ -117,6 +117,7 @@ export const SingleImageStudio: React.FC<SingleImageStudioProps> = ({
     try {
       const res = await analyzeSingleGeospatialImage({
         imageId: imageMeta.id,
+        imageBase64: imageMeta.preview_url,
         query: q.trim(),
         task: "auto",
       });

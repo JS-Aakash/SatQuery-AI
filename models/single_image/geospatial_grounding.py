@@ -100,10 +100,11 @@ class GeospatialGroundingEngine:
             )
 
             # Determine target analysis intent from query
-            is_vacant_bare = any(k in q_lower for k in ["bare", "vacant", "empty", "unused", "cleared", "soil", "uncultivated", "open area"])
-            is_vegetation = any(k in q_lower for k in ["vegetat", "tree", "forest", "crop", "canopy", "agriculture", "farm", "green"])
+            is_playground = any(k in q_lower for k in ["playground", "stadium", "sports", "track", "court", "pitch", "field", "baseball", "arena", "running track", "open ground"])
+            is_vegetation = any(k in q_lower for k in ["vegetat", "tree", "forest", "crop", "canopy", "agriculture", "farm", "green", "woodland", "jungle"])
+            is_urban = any(k in q_lower for k in ["built", "urban", "building", "structure", "city", "industrial", "settlement", "house", "roof", "rooftops"])
             is_water = any(k in q_lower for k in ["water", "lake", "river", "pond", "reservoir", "ocean", "sea", "inlet", "hydrolog"])
-            is_urban = any(k in q_lower for k in ["built", "urban", "building", "structure", "city", "industrial", "settlement", "house"])
+            is_vacant_bare = any(k in q_lower for k in ["bare", "vacant", "empty", "unused", "cleared", "soil", "uncultivated"])
             is_sar_strong = any(k in q_lower for k in ["strong sar", "backscatter", "radar", "double bounce", "double-bounce", "high backscatter"])
 
             # Compute Target Mask
@@ -149,7 +150,14 @@ class GeospatialGroundingEngine:
                 b_nir_idx = band_map.get(BandRole.NIR)
                 b_red_idx = band_map.get(BandRole.RED) or band_map.get(BandRole.RGB_RED, 1)
                 b_green_idx = band_map.get(BandRole.GREEN) or band_map.get(BandRole.RGB_GREEN, min(2, count))
+                b_blue_idx = band_map.get(BandRole.BLUE) or band_map.get(BandRole.RGB_BLUE, min(3, count))
                 b_swir_idx = band_map.get(BandRole.SWIR_1)
+
+                r_arr = ds.read(min(b_red_idx, count)).astype(np.float32)
+                g_arr = ds.read(min(b_green_idx, count)).astype(np.float32) if count >= 2 else r_arr.copy()
+                b_arr = ds.read(min(b_blue_idx, count)).astype(np.float32) if count >= 3 else r_arr.copy()
+                lum_arr = 0.299 * r_arr + 0.587 * g_arr + 0.114 * b_arr
+                exg_arr = 2.0 * g_arr - r_arr - b_arr
 
                 has_ndvi = bool(b_nir_idx and b_red_idx)
                 if has_ndvi:
@@ -159,26 +167,26 @@ class GeospatialGroundingEngine:
                     denom[denom == 0] = 1e-6
                     ndvi = (nir - red) / denom
                 else:
-                    red = ds.read(min(b_red_idx, count)).astype(np.float32)
-                    ndvi = (red - np.mean(red)) / (np.std(red) + 1e-5)
+                    ndvi = None
 
-                if is_vacant_bare:
-                    target_label = "Potential Bare/Non-Vegetated Area"
+                if is_playground:
+                    target_label = "Playground / Athletic Facility"
                     target_color = "#f59e0b"
-                    if has_ndvi:
-                        target_mask = (ndvi >= 0.0) & (ndvi <= 0.28)
-                    else:
-                        target_mask = red > np.percentile(red, 65)
-                    base_confidence = 0.89
+                    track = (r_arr > 165) & (r_arr > g_arr + 40) & (r_arr > b_arr + 70)
+                    turf = (exg_arr > 14.0) & (g_arr > r_arr + 8) & (lum_arr > 60) & (lum_arr < 210)
+                    target_mask = track | turf
+                    base_confidence = 0.95
 
                 elif is_vegetation:
                     target_label = "Dense Vegetation / Canopy"
                     target_color = "#10b981"
-                    if has_ndvi:
-                        target_mask = ndvi > 0.40
+                    if has_ndvi and ndvi is not None:
+                        target_mask = ndvi > 0.35
                     else:
-                        target_mask = red < np.percentile(red, 40)
-                    base_confidence = 0.94
+                        green_veg = (g_arr > r_arr + 2) & (g_arr > b_arr) & (exg_arr > 4.0)
+                        dark_canopy = (lum_arr < 75) & (g_arr >= r_arr - 8) & (b_arr < 65) & (lum_arr > 20)
+                        target_mask = green_veg | dark_canopy
+                    base_confidence = 0.95
 
                 elif is_water:
                     target_label = "Water Body / Hydrological Basin"
@@ -189,65 +197,90 @@ class GeospatialGroundingEngine:
                         ndwi = (green - nir) / (green + nir + 1e-6)
                         target_mask = ndwi > 0.0
                     else:
-                        target_mask = red < np.percentile(red, 20)
-                    base_confidence = 0.92
+                        target_mask = ((lum_arr < 55) & (b_arr >= r_arr - 4)) | ((b_arr > r_arr + 15) & (g_arr > r_arr + 8) & (lum_arr < 120))
+                    base_confidence = 0.93
 
-                elif is_urban:
-                    target_label = "Built-up & Impervious Structures"
-                    target_color = "#a855f7"
-                    if b_swir_idx and b_nir_idx:
-                        swir = ds.read(b_swir_idx).astype(np.float32)
-                        nir = ds.read(b_nir_idx).astype(np.float32)
-                        ndbi = (swir - nir) / (swir + nir + 1e-6)
-                        target_mask = ndbi > 0.05
-                    else:
-                        target_mask = red > np.percentile(red, 75)
-                    base_confidence = 0.90
-                else:
-                    target_label = "Identified Feature Region"
-                    target_mask = red > np.mean(red)
-                    target_color = "#3b82f6"
+                # Extract optical bounding boxes directly via high-precision spatial normalizer
+                from .normalizer import SpatialNormalizer
+                opt_feat = "playground" if is_playground else ("trees" if is_vegetation else ("urban" if is_urban else ("water" if is_water else "vegetation")))
+                raw_rgb = np.stack([
+                    np.clip(r_arr, 0, 255).astype(np.uint8),
+                    np.clip(g_arr, 0, 255).astype(np.uint8),
+                    np.clip(b_arr, 0, 255).astype(np.uint8)
+                ], axis=-1)
 
-            # If target_mask has no positive pixels, create standard synthetic anchor clusters
-            if np.sum(target_mask) < 20:
-                # Segment quadrant
-                target_mask[int(height * 0.2):int(height * 0.5), int(width * 0.3):int(width * 0.7)] = True
+                norm_boxes = SpatialNormalizer.extract_multiple_bounding_boxes_from_raster(raw_rgb, opt_feat, max_boxes=3)
+                if norm_boxes:
+                    for idx, nb in enumerate(norm_boxes, start=1):
+                        min_y = int((nb[0] / 100.0) * height)
+                        min_x = int((nb[1] / 100.0) * width)
+                        max_y = int((nb[2] / 100.0) * height)
+                        max_x = int((nb[3] / 100.0) * width)
+                        pixel_bbox = [nb[0], nb[1], nb[2], nb[3]]
 
-            # Extract Contiguous Bounding Boxes & Polygons
-            # Simple grid-based connected region scanning
-            y_indices, x_indices = np.where(target_mask)
-            if len(y_indices) == 0:
-                return []
+                        if transform:
+                            top_left = xy(transform, min_y, min_x)
+                            top_right = xy(transform, min_y, max_x)
+                            bottom_right = xy(transform, max_y, max_x)
+                            bottom_left = xy(transform, max_y, min_x)
+                            center_xy = xy(transform, int((min_y + max_y) / 2), int((min_x + max_x) / 2))
 
-            # Partition into up to 4 significant clusters
-            clusters = [
-                (y_indices, x_indices)
-            ]
-            # If large, split into sub-clusters by quadrants for distinct polygons
-            if len(y_indices) > 500:
-                y_mid = np.median(y_indices)
-                x_mid = np.median(x_indices)
-                c1 = (y_indices[y_indices <= y_mid], x_indices[y_indices <= y_mid])
-                c2 = (y_indices[y_indices > y_mid], x_indices[y_indices > y_mid])
-                if len(c1[0]) > 50 and len(c2[0]) > 50:
-                    clusters = [c1, c2]
+                            if crs and not is_geographic:
+                                try:
+                                    lons, lats = warp_transform(crs, "EPSG:4326", 
+                                        [top_left[0], top_right[0], bottom_right[0], bottom_left[0], top_left[0]],
+                                        [top_left[1], top_right[1], bottom_right[1], bottom_left[1], top_left[1]]
+                                    )
+                                    c_lon, c_lat = warp_transform(crs, "EPSG:4326", [center_xy[0]], [center_xy[1]])
+                                    poly_coords = [[lons[i], lats[i]] for i in range(5)]
+                                    centroid = [c_lon[0], c_lat[0]]
+                                    geo_bbox = [min(lons), min(lats), max(lons), max(lats)]
+                                except Exception:
+                                    poly_coords = [
+                                        [top_left[0], top_left[1]], [top_right[0], top_right[1]],
+                                        [bottom_right[0], bottom_right[1]], [bottom_left[0], bottom_left[1]],
+                                        [top_left[0], top_left[1]]
+                                    ]
+                                    centroid = [center_xy[0], center_xy[1]]
+                                    geo_bbox = [min(top_left[0], bottom_left[0]), min(bottom_left[1], bottom_right[1]), max(top_right[0], bottom_right[0]), max(top_left[1], top_right[1])]
+                            else:
+                                poly_coords = [
+                                    [top_left[0], top_left[1]], [top_right[0], top_right[1]],
+                                    [bottom_right[0], bottom_right[1]], [bottom_left[0], bottom_left[1]],
+                                    [top_left[0], top_left[1]]
+                                ]
+                                centroid = [center_xy[0], center_xy[1]]
+                                geo_bbox = [min(top_left[0], bottom_left[0]), min(bottom_left[1], bottom_right[1]), max(top_right[0], bottom_right[0]), max(top_left[1], top_right[1])]
+                        else:
+                            poly_coords = [[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]
+                            centroid = [0.5, 0.5]
+                            geo_bbox = [0, 0, 1, 1]
 
-            for idx, (cy_inds, cx_inds) in enumerate(clusters, start=1):
-                min_y, max_y = int(np.min(cy_inds)), int(np.max(cy_inds))
-                min_x, max_x = int(np.min(cx_inds)), int(np.max(cx_inds))
+                        area_px = max(1, (max_y - min_y) * (max_x - min_x))
+                        area_m2 = area_px * (gsd_m * gsd_m)
+                        area_ha = area_m2 / 10000.0
 
-                # Compute pixel bounding box in 0-100%
-                pixel_bbox = [
-                    (min_y / height) * 100.0,
-                    (min_x / width) * 100.0,
-                    (max_y / height) * 100.0,
-                    (max_x / width) * 100.0,
-                ]
+                        geojson_poly = {
+                            "type": "Polygon",
+                            "coordinates": [poly_coords]
+                        }
 
-                # Convert pixel bounding box to geographic coordinates via affine transform
-                if transform:
-                    top_left = xy(transform, min_y, min_x)
-                    top_right = xy(transform, min_y, max_x)
+                        grounded_regions.append(GroundedGeospatialRegion(
+                            region_id=f"grd-{uuid.uuid4().hex[:6]}",
+                            label=f"{target_label} #{idx}",
+                            category=target_label,
+                            confidence=base_confidence - (idx * 0.02),
+                            pixel_bbox=pixel_bbox,
+                            geo_bbox=geo_bbox,
+                            polygon=geojson_poly,
+                            area_m2=area_m2,
+                            area_ha=area_ha,
+                            centroid=centroid,
+                            color=target_color,
+                            description=f"Delineated region spanning {area_ha:.2f} hectares based on high-resolution spectral extraction."
+                        ))
+
+                    return grounded_regions
                     bottom_right = xy(transform, max_y, max_x)
                     bottom_left = xy(transform, max_y, min_x)
                     center_xy = xy(transform, int((min_y + max_y) / 2), int((min_x + max_x) / 2))

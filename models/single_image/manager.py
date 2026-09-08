@@ -46,9 +46,15 @@ class SingleImageModelManager:
         try:
             import torch
             has_cuda = torch.cuda.is_available()
-            device_name = torch.cuda.get_device_name(0) if has_cuda else "CPU Only"
-            vram_gb = round(torch.cuda.get_device_properties(0).total_memory / (1024**3), 2) if has_cuda else 0.0
-            vram_alloc = round(torch.cuda.memory_allocated() / (1024**3), 2) if has_cuda else 0.0
+            if has_cuda:
+                torch.cuda.empty_cache()
+                device_name = torch.cuda.get_device_name(0)
+                vram_gb = round(torch.cuda.get_device_properties(0).total_memory / (1024**3), 2)
+                vram_alloc = round(torch.cuda.memory_allocated() / (1024**3), 2)
+            else:
+                device_name = "CPU Only"
+                vram_gb = 0.0
+                vram_alloc = 0.0
         except Exception:
             has_cuda = False
             device_name = "NVIDIA GeForce RTX 3050 Laptop GPU (System Driver 560.81)"
@@ -82,11 +88,17 @@ class SingleImageModelManager:
         """
         # Auto-classify task intent if requested
         if task == SingleImageTaskEnum.AUTO:
-            q_lower = query.lower()
-            if any(k in q_lower for k in ["find", "locate", "highlight", "ground", "where is", "box"]):
-                actual_task = SingleImageTaskEnum.GROUNDING
-            elif any(k in q_lower for k in ["describe", "caption", "scene", "overview", "what land-cover"]):
+            q_lower = query.lower().strip()
+            # If query is asking to locate/highlight/find, or is naming specific features to detect
+            grounding_keywords = [
+                "find", "locate", "highlight", "ground", "where is", "where are", "box", "detect", "segment", "show",
+                "tree", "trees", "forest", "canopy", "vegetation", "playground", "playgrounds", "stadium", "sports",
+                "building", "buildings", "urban", "houses", "water", "river", "lake", "pond", "crop", "farm", "ships"
+            ]
+            if any(k in q_lower for k in ["describe", "caption", "overview", "what land-cover", "summarize scene"]):
                 actual_task = SingleImageTaskEnum.CAPTIONING
+            elif any(k in q_lower for k in grounding_keywords):
+                actual_task = SingleImageTaskEnum.GROUNDING
             else:
                 actual_task = SingleImageTaskEnum.VQA
         else:

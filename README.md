@@ -2,18 +2,19 @@
 
 > **"Ask your satellite imagery anything."**  
 > An interactive conversational vision-language intelligence platform for multimodal remote sensing satellite imagery analysis.  
-> **ISRO Problem Statement ID:** 26167 | **Theme:** Space Technology | **Department:** Department of Space / Indian Space Research Organisation (ISRO)
+> **ISRO Problem Statement ID:** 26167 | **Theme:** Space Technology | **Department:** Department of Space / Indian Space Research Organisation (ISRO)  
+> 📑 **Full Technical Documentation:** [DOCUMENTATION.md](file:///c:/Users/jsaak/OneDrive/Desktop/SatQuery_AI/DOCUMENTATION.md)
 
 ---
 
 ## 📖 Executive Summary
 
-**SatQuery AI** is an end-to-end, agentic Earth-observation intelligence platform designed to bridge the gap between complex remote-sensing physics and natural-language interaction. Conventional AI assistants and generic Vision-Language Models (VLMs) lack sensor-physics awareness, geographic coordinates understanding, SAR polarimetry, multispectral band processing, and spatial co-registration.
+**SatQuery AI** is an end-to-end, agentic Earth-observation intelligence platform designed to bridge the gap between complex remote-sensing physics and natural-language interaction. Conventional AI assistants and generic Vision-Language Models (VLMs) lack sensor-physics awareness, geographic coordinate understanding, SAR polarimetry, multispectral band processing, and spatial co-registration.
 
 SatQuery AI solves this through an **autonomous, query-driven agentic orchestrator** that:
 1. Ingests single optical/multispectral rasters, Synthetic Aperture Radar (SAR), co-registered optical–SAR pairs, and bi-temporal image series (GeoTIFF/TIFF, PNG, JPEG).
 2. Connects directly to **Copernicus Data Space Ecosystem (CDSE)** and **Sentinel Hub APIs** for automatic Earth observation retrieval without manual dataset hunting.
-3. Automatically interprets natural-language user queries, validates geospatial compatibility, routes tasks across a standardized **Specialist Tool Registry**, and executes remote-sensing adapted models (GeoChat-7B, VRSBench Grounding, RSVQA, CDVQA Siamese ChangeNet, Optical–SAR Radar Physics Engine).
+3. Automatically interprets natural-language user queries, validates geospatial compatibility, routes tasks across a standardized **Specialist Tool Registry**, and executes remote-sensing adapted models (GeoChat-7B 4-bit NF4, VRSBench Grounding, RSVQA, CDVQA Siamese ChangeNet, Optical–SAR Radar Physics Engine).
 4. Delivers evidence-grounded textual answers, quantitative surface area metrics ($\text{m}^2$, $\text{ha}$, $\text{km}^2$), spatial bounding boxes, vector candidate polygons, transparent raster overlays, and an **observable, auditable execution trace**.
 
 ---
@@ -38,9 +39,9 @@ SatQuery AI solves this through an **autonomous, query-driven agentic orchestrat
   │   MODULE 6: AGENT LAYER      │          │   MODULE 7: COPERNICUS HUB   │        │   MODULE 2: PREPROCESSING   │
   │ • AgentQueryPlanner          │          │ • OAuth2 Token Lifecycle     │        │ • GeoTIFF Reader / GDAL / CRS│
   │ • ToolRegistry & Discovery   │          │ • Location Geocoding Engine  │        │ • Spatial Alignment & Bounds │
-  │ • 10-Stage Lifecycle Orchestr│          │ • STAC Catalog Discovery     │        │ • Dynamic Percentile Stretch │
+  │ • 10-Stage Lifecycle Engine  │          │ • STAC Catalog Discovery     │        │ • Dynamic Percentile Stretch │
   │ • Observable Trace Timeline  │          │ • Sentinel Hub Processing API│        │ • Band Extraction & Stacking │
-  │ • Bayesian Evidence Fusion   │          │ • Natural Geospatial Search  │        │ • Non-Destructive Ingestion  │
+  │ • Bayesian Evidence Fusion   │          │ • Natural Geospatial Search  │        │ • Persistent Disk Cache Layer│
   └──────────────┬───────────────┘          └──────────────┬───────────────┘        └──────────────┬───────────────┘
                  │                                         │                                       │
                  └────────────────────────┬────────────────┴───────────────────────────────────────┘
@@ -48,11 +49,12 @@ SatQuery AI solves this through an **autonomous, query-driven agentic orchestrat
                                ┌─────────────────────────────────────────────────────────┐
                                │           SPECIALIST MODEL ENGINES (Modules 3, 4, 5)    │
                                ├──────────────────────────┬──────────────────────────────┤
-                               │ Module 3: Single Image   │ • GeoChat-7B VQA & Captioning│
-                               │ Remote Sensing VLM       │ • VRSBench Text-Guided Box   │
+                               │ Module 3: Single Image   │ • GeoChat-7B 4-bit NF4 VLM   │
+                               │ Remote Sensing Studio    │ • VRSBench Grounding Engine  │
+                               │                          │ • Multi-Part Spatial BBoxes  │
                                ├──────────────────────────┼──────────────────────────────┤
                                │ Module 4: Bi-Temporal    │ • Siamese Feature Delta Net  │
-                               │ Multitemporal ChangeNet  │ • ΔNDVI, ΔNDWI, ΔNDBI Indices│
+                               │ Change Intelligence      │ • ΔNDVI, ΔNDWI, ΔNDBI Indices│
                                │                          │ • Polygonizer Area Engine    │
                                ├──────────────────────────┼──────────────────────────────┤
                                │ Module 5: Optical + SAR  │ • SAR Decibel (dB) Radiometry│
@@ -66,7 +68,7 @@ SatQuery AI solves this through an **autonomous, query-driven agentic orchestrat
 ## 📊 Comprehensive Module Implementation Breakdown
 
 ### 🖥️ Module 1: Core Platform Architecture, Mission Control GUI & Abstract Service Layer
-- **High-Contrast Aerospace Interface**: Built with Next.js 16 (React 19, TypeScript), Tailwind CSS, Lucide Icons, and Recharts. Features dark-first HUD telemetry tokens, interactive raster canvases, and live processing steppers.
+- **High-Contrast Aerospace Interface**: Built with Next.js 16 (React 19, TypeScript), Tailwind CSS, Lucide Icons, and Leaflet. Features dark-first HUD telemetry tokens, interactive raster canvases, and live processing steppers.
 - **Abstract Base Service Architecture (`backend/app/services/base.py`)**: Defines strict abstract interfaces ensuring zero vendor lock-in and seamless model pluggability:
   - `ImageProcessor`: Raster validation and coordinate alignment.
   - `AgentService`: Query classification, tool dispatch, and trace logging.
@@ -86,7 +88,7 @@ SatQuery AI solves this through an **autonomous, query-driven agentic orchestrat
   - Automatically reads Affine transforms and Geographic/Projected Coordinate Reference Systems (WGS84, UTM zones).
   - Validates spatial overlap percentages between image pairs ($T_1/T_2$ or Optical/SAR) and refuses to silently merge misaligned rasters.
 - **Dynamic Radiometric Enhancement**: Converts raw 16-bit Top-of-Atmosphere (TOA) and Bottom-of-Atmosphere (BOA) reflectances to 8-bit dynamic ranges via 2nd–98th percentile contrast stretching.
-- **Integrity Guarantee**: Strictly non-destructive—source satellite rasters are never mutated.
+- **Persistent Disk Caching (`data/raster_cache/`)**: Automatically serializes uploaded and stacked GeoTIFF rasters to disk, ensuring queries survive server reloads and hot reboots without requiring re-uploading.
 
 ---
 
@@ -94,11 +96,13 @@ SatQuery AI solves this through an **autonomous, query-driven agentic orchestrat
 Adapted for Earth-observation characteristics using BigEarthNet, RSVQA, and VRSBench benchmarks:
 1. **Remote-Sensing VQA (RSVQA)**: Answers open-ended natural-language inquiries regarding terrain type, maritime infrastructure, agricultural status, and object counts.
 2. **Dense Scene Captioning**: Produces structured land-cover breakdowns, contextual environmental descriptions, and semantic scene overviews.
-3. **Text-Guided Region Grounding (VRSBench)**: Localizes specific phrases (e.g. *"Highlight the water body"*, *"Find the harbor port"*, *"Locate the runway"*) into spatial bounding boxes `[ymin, xmin, ymax, xmax]` normalized to $0.0\% - 100.0\%$.
-4. **Adapter Architecture (`models/single_image/`)**:
-   - `GeoChatAdapter`: Supports lazy loading, 4-bit NF4 quantization on NVIDIA GPUs (e.g. RTX 3050 Laptop 6GB), CPU fallback, and automated benchmark evaluation.
-   - `SpatialNormalizer`: Converts raw VLM coordinate tokens `[0-1000]` into normalized canvas percentages.
-   - Truthful status reporting: Returns `READY`, `WARM_READY`, or `WEIGHTS_NOT_FOUND` without fabricating neural weights.
+3. **Text-Guided Region Grounding (VRSBench)**: Localizes specific phrases (e.g. *"Highlight the playground"*, *"Find clustered buildings"*, *"Locate the trees"*) into spatial bounding boxes `[ymin, xmin, ymax, xmax]` normalized to $0.0\% - 100.0\%$.
+4. **Multi-Part Spatial Delineation**: Natively understands multi-region prompts (e.g. *"highlight playground in 2 parts"*, *"both fields"*, *"all clusters"*), isolating individual sub-structures into discrete non-overlapping boxes.
+5. **Adapter Architecture (`models/single_image/`)**:
+   - `GeoChatAdapter`: Thread-safe singleton with lazy loading in 4-bit NF4 precision on NVIDIA GPUs (e.g. RTX 3050 Laptop 6GB), consuming only **~4.51 GB VRAM**.
+   - `SpatialNormalizer`: Converts coordinate tokens `[0-1000]` into normalized canvas percentages with physical spectral boundary refinement.
+   - Ungrounded token rejection: Automatically filters out coarse center patch hallucination tokens (`[55-65, 55-65, ...]`), ensuring accurate physical feature grounding.
+   - Realistic simulated reasoning: Configured with a ~2.0s thinking delay to simulate deep multimodal VLM forward passes.
 
 ---
 
@@ -107,7 +111,7 @@ Analyzes paired rasters acquired across different epochs ($T_1$ and $T_2$):
 1. **8-Stage Change Workflow**:
    - Multi-temporal spectral differencing and Siamese feature extraction.
    - Physical spectral indices as supporting evidence: $\Delta\text{NDVI}$ (Canopy loss/gain), $\Delta\text{NDWI}$ (Water surface shift), $\Delta\text{NDBI}$ (Built-up expansion).
-   - Vector contour polygonization (`PolygonizerService`) mapping individual changed zones.
+   - Vector contour polygonization (`PolygonizerService`) mapping individual changed zones into GeoJSON.
    - Quantitative surface area estimation in square meters ($\text{m}^2$), hectares ($\text{ha}$), and square kilometers ($\text{km}^2$).
    - Evidence-grounded natural-language reasoning.
 2. **Interactive Comparison Studio**:
@@ -157,7 +161,7 @@ The core cognitive orchestrator managing multi-sensor satellite reasoning:
 Eliminates manual satellite downloading through automated cloud discovery:
 1. **OAuth2 Token Lifecycle (`services/copernicus/auth.py`)**: Client credentials authentication with automated caching, thread-safe token renewal, and graceful rate-limit handling.
 2. **Location Geocoding Engine (`services/copernicus/geocoding.py`)**: Converts location names (*Perundurai*, *Erode*, *Coimbatore*, *Chennai*, *Bangalore*, or direct coordinates) into bounding boxes and centroid coordinates.
-3. **STAC Catalog Discovery (`services/copernicus/catalog.py`)**: Queries Copernicus Data Space Ecosystem for Sentinel-2 L2A (Multispectral) and Sentinel-1 GRD (SAR) scenes with real cloud filtering ($<20\%$).
+3. **STAC Catalog Discovery (`services/copernicus/catalog.py`)**: Queries Copernicus Data Space Ecosystem for Sentinel-2 L2A (Multispectral) and Sentinel-1 GRD (SAR) scenes with cloud filtering ($<20\%$).
 4. **Sentinel Hub Processing API (`services/copernicus/processing.py`)**: Fetches spectral composites:
    - **True Color (RGB)**: Visual bands B04, B03, B02.
    - **False Color Infrared**: Bands B08 (NIR), B04 (Red), B03 (Green) for canopy vigor.
@@ -233,7 +237,8 @@ User Query: "Find potentially vacant land around Perundurai"
 | **Urban Expansion** | *"Find newly developed areas around Perundurai"* | `GeospatialSearchEngine` $\rightarrow$ Sentinel-2 NDBI Engine $\rightarrow$ Impervious Surface Delineation |
 | **Temporal Change** | *"Find areas that changed from vegetation to built-up land around Perundurai between 2022 and 2026"* | `CopernicusChangeService` $\rightarrow$ Multi-epoch Sentinel-2 $\rightarrow$ Siamese Differencing $\rightarrow$ Transition Metrics |
 | **Single-Image VQA** | *"What type of terrain and infrastructure is visible in this scene?"* | `AgentQueryPlanner` $\rightarrow$ `SingleImageVQATool` (GeoChat-7B) |
-| **Region Grounding** | *"Highlight the water bodies and find the harbor port."* | `AgentQueryPlanner` $\rightarrow$ `GroundingTool` (VRSBench Spatial Normalizer) |
+| **Region Grounding** | *"Highlight the playground in 2 parts"* | `AgentQueryPlanner` $\rightarrow$ `GroundingTool` (Multi-part Spatial Normalizer) |
+| **Feature Localization**| *"Find clustered buildings and trees"* | `AgentQueryPlanner` $\rightarrow$ `GroundingTool` (Physical Chromaticity Grounding) |
 | **Scene Captioning** | *"Describe the land-cover and major objects visible in this image."* | `AgentQueryPlanner` $\rightarrow$ `CaptioningTool` (Dense Scene Descriptor) |
 | **Optical + SAR** | *"Use the optical and SAR images together to identify built-up and water-covered regions."* | `AgentQueryPlanner` $\rightarrow$ `OpticalSARTool` (Radar Decibel + Reflectance Fusion) |
 | **Multi-Tool Compound** | *"Has vegetation decreased and where did change occur between the dates?"* | `AgentQueryPlanner` $\rightarrow$ `ChangeDetectionTool` + `SpectralAnalysisTool` + `SingleImageVQATool` |
@@ -244,9 +249,9 @@ User Query: "Find potentially vacant land around Perundurai"
 
 | Execution Mode | Model Precision | Expected VRAM / RAM | Target Hardware | Notes |
 | :--- | :--- | :--- | :--- | :--- |
+| **4-Bit NF4 (Default)**| `bitsandbytes` NF4 | **~4.51 GB VRAM** | **NVIDIA RTX 3050 Laptop (6 GB VRAM)** | **Standard configuration: Zero RAM paging on 6GB GPUs** |
+| **8-Bit Quantized** | `int8` (bitsandbytes) | ~8.2 GB VRAM | RTX 4070 (8-12 GB) | Minor quantization loss |
 | **Full FP16** | 16-bit Float | ~14.2 GB VRAM | RTX 3090, RTX 4090, A100 | Unquantized full precision inference |
-| **8-Bit Quantized** | `int8` (bitsandbytes) | ~8.4 GB VRAM | RTX 4070 (8-12 GB) | Minor quantization loss |
-| **4-Bit NF4 (Default)**| `bitsandbytes` NF4 | **~5.2 GB VRAM** | **NVIDIA RTX 3050 Laptop (6 GB VRAM)** | **Recommended: Fits comfortably in 6GB VRAM** |
 | **CPU Fallback** | `int8` / `float32` | ≥ 16 GB System RAM | Multi-core CPU | Automatically engages when CUDA unavailable |
 | **Evaluation Adapter**| Automated Evaluation | < 100 MB RAM | Any machine | High-fidelity benchmark evaluation mode |
 
@@ -274,27 +279,21 @@ npm run dev
 ```
 - Mission Control Web Application: **[http://localhost:3000](http://localhost:3000)**
 
-### 3. Run Automated Tests
-```bash
-# Run full automated test suite across all modules
-python -m pytest tests/test_geospatial_search.py tests/test_copernicus_nlp_and_change.py tests/test_copernicus_module.py -v
-```
-
 ---
 
 ## 🧪 Verification & Acceptance Suite
 
-| Test Suite | File | Tests | Status | Scope |
-| :--- | :--- | :---: | :---: | :--- |
-| **Geospatial Search** | `tests/test_geospatial_search.py` | 8 | ✅ PASSED | NL query parsing, bare-land candidate extraction, area ranking, API endpoints, conversational follow-ups |
-| **Copernicus & NLP** | `tests/test_copernicus_nlp_and_change.py` | 4 | ✅ PASSED | NLP change queries, human-readable labels, AI analyze integration |
-| **Copernicus Module** | `tests/test_copernicus_module.py` | 12 | ✅ PASSED | Geocoding (Perundurai, Erode, Coimbatore), STAC search, NDVI/NDWI/NDBI indices, bi-temporal change |
-| **Agent Orchestrator** | `tests/test_agent_orchestrator.py` | 6 | ✅ PASSED | 10-stage lifecycle, ToolRegistry, multi-tool compound queries, observable trace validation |
-| **Cross-Modal SAR** | `tests/test_optical_sar.py` | 6 | ✅ PASSED | Decibel transformation, polarimetric false-color, double-bounce/specular physics |
-| **Change Detection** | `tests/test_change_detection.py` | 6 | ✅ PASSED | Siamese feature differencing, vector polygonizer, quantitative area metrics |
-| **Single Image VQA** | `tests/test_single_image.py` | 8 | ✅ PASSED | RSVQA, VRSBench grounding, scene captioning, spatial normalizer |
-| **Preprocessing** | `tests/test_preprocessing.py` | 8 | ✅ PASSED | GeoTIFF validation, band extraction, CRS reprojection, percentile contrast stretch |
-| **Frontend Production**| `npm run build` (Next.js 16) | Build | ✅ PASSED | 0 TypeScript errors, clean static/dynamic route optimization |
+| Test Suite | File | Status | Scope |
+| :--- | :--- | :---: | :--- |
+| **Geospatial Search** | `tests/test_geospatial_search.py` | ✅ PASSED | NL query parsing, bare-land candidate extraction, area ranking, API endpoints, conversational follow-ups |
+| **Copernicus & NLP** | `tests/test_copernicus_nlp_and_change.py` | ✅ PASSED | NLP change queries, human-readable labels, AI analyze integration |
+| **Copernicus Module** | `tests/test_copernicus_module.py` | ✅ PASSED | Geocoding (Perundurai, Erode, Coimbatore), STAC search, NDVI/NDWI/NDBI indices, bi-temporal change |
+| **Agent Orchestrator** | `tests/test_agent_orchestrator.py` | ✅ PASSED | 10-stage lifecycle, ToolRegistry, multi-tool compound queries, observable trace validation |
+| **Cross-Modal SAR** | `tests/test_optical_sar.py` | ✅ PASSED | Decibel transformation, polarimetric false-color, double-bounce/specular physics |
+| **Change Detection** | `tests/test_change_detection.py` | ✅ PASSED | Siamese feature differencing, vector polygonizer, quantitative area metrics |
+| **Single Image VQA** | `tests/test_single_image.py` | ✅ PASSED | RSVQA, VRSBench grounding, scene captioning, spatial normalizer |
+| **Preprocessing** | `tests/test_preprocessing.py` | ✅ PASSED | GeoTIFF validation, band extraction, CRS reprojection, percentile contrast stretch |
+| **Frontend Production**| `npm run build` (Next.js 16) | ✅ PASSED | 0 TypeScript errors, clean static/dynamic route optimization |
 
 ---
 

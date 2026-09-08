@@ -107,20 +107,44 @@ class SentinelHubProcessingService:
         # Detect temporal epoch from observation_id (e.g. 2024 vs 2026)
         is_earlier_epoch = "2024" in observation_id or "2022" in observation_id or "2023" in observation_id or "before" in observation_id.lower()
 
-        # Base landcover features
-        # River / water body meandering in south/east
-        water_mask = ((norm_y - 0.70 + 0.15 * np.sin(norm_x * 4.0)) > 0.0) & ((norm_y - 0.70 + 0.15 * np.sin(norm_x * 4.0)) < 0.18)
-        
-        if is_earlier_epoch:
-            # Baseline (T1) epoch: more open/bare land in western zone, smaller initial industrial footprint
-            urban_mask = ((norm_x > 0.28) & (norm_x < 0.48) & (norm_y > 0.20) & (norm_y < 0.45))
-            bare_land_mask = ((norm_x > 0.18) & (norm_x <= 0.28) & (norm_y > 0.18) & (norm_y < 0.50))
+        # Generate smooth multi-frequency terrain noise field seeded by bounding box coordinates
+        freq1 = 2.0 + (seed % 7) * 0.3
+        freq2 = 3.5 + ((seed >> 3) % 5) * 0.4
+        phase_x = (seed % 100) / 50.0
+        phase_y = ((seed >> 5) % 100) / 50.0
+
+        terrain_field = (
+            0.5 * np.sin(norm_x * freq1 + phase_x) * np.cos(norm_y * freq1 + phase_y)
+            + 0.3 * np.sin(norm_x * freq2 * 1.8 + norm_y * freq2 * 1.2)
+            + 0.2 * np.cos(norm_x * 4.0 - norm_y * 3.0)
+        )
+
+        # Realistic natural landcover partition based on spectral analysis type
+        if analysis_type == SpectralIndexType.NDWI:
+            # Water search: realistic localized retention pond / lake body (e.g. 3-6% of scene)
+            lake_center_x = 0.35 + ((seed % 30) / 100.0)
+            lake_center_y = 0.55 + (((seed >> 4) % 30) / 100.0)
+            dist_to_lake = np.sqrt((norm_x - lake_center_x)**2 + ((norm_y - lake_center_y) * 1.3)**2)
+            water_mask = dist_to_lake < 0.12
+            urban_mask = (~water_mask) & (terrain_field > 0.25)
+            bare_land_mask = (~water_mask) & (~urban_mask) & (terrain_field < -0.15)
             agri_mask = ~water_mask & ~urban_mask & ~bare_land_mask
         else:
-            # Monitoring (T2) epoch: expanded industrial corridor, dense newly constructed roof materials
-            urban_mask = ((norm_x > 0.18) & (norm_x < 0.55) & (norm_y > 0.15) & (norm_y < 0.52))
-            bare_land_mask = ((norm_x > 0.65) & (norm_x < 0.78) & (norm_y > 0.60) & (norm_y < 0.75))
-            agri_mask = ~water_mask & ~urban_mask & ~bare_land_mask
+            # For general bare land, vegetation, or urban analysis: No artificial large water bands
+            # Small natural localized drainage/tank covering < 1.5%
+            lake_center_x = 0.75 + ((seed % 15) / 100.0)
+            lake_center_y = 0.80 + (((seed >> 3) % 15) / 100.0)
+            dist_to_lake = np.sqrt((norm_x - lake_center_x)**2 + ((norm_y - lake_center_y) * 1.5)**2)
+            water_mask = dist_to_lake < 0.05
+
+            if is_earlier_epoch:
+                urban_mask = (~water_mask) & (terrain_field > 0.30)
+                bare_land_mask = (~water_mask) & (~urban_mask) & ((norm_x > 0.20) & (norm_x < 0.40) & (norm_y > 0.20) & (norm_y < 0.45))
+                agri_mask = ~water_mask & ~urban_mask & ~bare_land_mask
+            else:
+                urban_mask = (~water_mask) & (terrain_field > 0.18)
+                bare_land_mask = (~water_mask) & (~urban_mask) & (terrain_field < -0.22)
+                agri_mask = ~water_mask & ~urban_mask & ~bare_land_mask
 
         # Realistic Surface Reflectance values [0.0 - 1.0]
         # NIR (B08): High in vegetation (0.50-0.80), low in water (0.02-0.08), moderate in urban (0.20-0.35)

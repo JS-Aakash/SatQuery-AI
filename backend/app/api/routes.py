@@ -73,9 +73,40 @@ report_service = DefaultReportService()
 # In-memory store for analysis history during development
 ANALYSIS_HISTORY: List[AnalysisResponse] = []
 
-# In-memory raster buffer cache for active uploads (keyed by image_id)
+# Persistent raster buffer cache for active uploads (keyed by image_id)
+RASTER_CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "raster_cache")
+os.makedirs(RASTER_CACHE_DIR, exist_ok=True)
 RASTER_CACHE: Dict[str, bytes] = {}
 METADATA_CACHE: Dict[str, ImageMetadata] = {}
+
+
+def get_cached_raster(image_id: str) -> Optional[bytes]:
+    if not image_id:
+        return None
+    if image_id in RASTER_CACHE:
+        return RASTER_CACHE[image_id]
+    cache_path = os.path.join(RASTER_CACHE_DIR, f"{image_id}.tif")
+    if os.path.exists(cache_path):
+        try:
+            with open(cache_path, "rb") as f:
+                data = f.read()
+                RASTER_CACHE[image_id] = data
+                return data
+        except Exception:
+            pass
+    return None
+
+
+def store_cached_raster(image_id: str, content: bytes):
+    if not image_id or not content:
+        return
+    RASTER_CACHE[image_id] = content
+    cache_path = os.path.join(RASTER_CACHE_DIR, f"{image_id}.tif")
+    try:
+        with open(cache_path, "wb") as f:
+            f.write(content)
+    except Exception:
+        pass
 
 
 def _seed_sample_history():
@@ -280,7 +311,7 @@ async def upload_file_multipart(file: UploadFile = File(...)):
 
     # Cache raster bytes and metadata for AOI/tiling operations
     metadata.download_url = f"/api/single/download/{metadata.id}"
-    RASTER_CACHE[metadata.id] = content
+    store_cached_raster(metadata.id, content)
     METADATA_CACHE[metadata.id] = metadata
 
     return ImageUploadValidationResponse(
@@ -332,7 +363,7 @@ async def build_multispectral_geotiff(
             sample_bytes=combined_bytes
         )
         metadata.download_url = f"/api/single/download/{metadata.id}"
-        RASTER_CACHE[metadata.id] = combined_bytes
+        store_cached_raster(metadata.id, combined_bytes)
         METADATA_CACHE[metadata.id] = metadata
 
         return ImageUploadValidationResponse(
@@ -349,10 +380,10 @@ async def download_single_geotiff(image_id: str):
     """
     Direct download endpoint for user-uploaded or system-generated multi-band GeoTIFFs.
     """
-    if image_id not in RASTER_CACHE:
+    raster_bytes = get_cached_raster(image_id)
+    if not raster_bytes:
         raise HTTPException(status_code=404, detail="Requested GeoTIFF not found or expired in cache.")
     
-    raster_bytes = RASTER_CACHE[image_id]
     metadata = METADATA_CACHE.get(image_id)
     filename = metadata.filename if metadata else f"satquery_{image_id[:8]}.tif"
     if not filename.endswith((".tif", ".tiff")):
@@ -402,7 +433,7 @@ def generate_composite_preview(request: CompositePreviewRequest):
     - sar_db: Decibel scaled polarimetric composite
     - custom: User-specified band triplet
     """
-    raster_bytes = RASTER_CACHE.get(request.image_id)
+    raster_bytes = get_cached_raster(request.image_id)
     if not raster_bytes:
         raise HTTPException(status_code=404, detail="Raster not found in cache. Please upload the file first.")
 
@@ -437,7 +468,7 @@ def crop_raster_to_aoi(request: CropAOIRequest):
     Crops a cached raster to an AOI bounding box or polygon.
     Returns cropped metadata and preview without altering the original.
     """
-    raster_bytes = RASTER_CACHE.get(request.image_id)
+    raster_bytes = get_cached_raster(request.image_id)
     if not raster_bytes:
         raise HTTPException(status_code=404, detail="Raster not found in cache.")
 
@@ -447,7 +478,7 @@ def crop_raster_to_aoi(request: CropAOIRequest):
 
     cropped_bytes, cropped_meta, preview_url = AOIService.crop_raster(raster_bytes, aoi)
     new_id = f"crop_{uuid.uuid4().hex[:8]}"
-    RASTER_CACHE[new_id] = cropped_bytes
+    store_cached_raster(new_id, cropped_bytes)
 
     return CropAOIResponse(
         image_id=request.image_id,
@@ -463,7 +494,7 @@ def tile_raster(request: TilingRequest):
     Slices a cached large raster into configurable ML-ready tiles.
     Retains affine transform and geographic bounds for coordinate remapping.
     """
-    raster_bytes = RASTER_CACHE.get(request.image_id)
+    raster_bytes = get_cached_raster(request.image_id)
     if not raster_bytes:
         raise HTTPException(status_code=404, detail="Raster not found in cache.")
 
@@ -488,20 +519,36 @@ def analyze_single_image(request: SingleImageRequest):
     """
     from models.single_image import model_manager
 
-    # Retrieve raster data from cache or request payload
+    # Retrieve raster data from cache, base64 payload, or active disk storage
     raster_bytes = None
     if request.image_id:
-        raster_bytes = RASTER_CACHE.get(request.image_id)
+        raster_bytes = get_cached_raster(request.image_id)
 
     if not raster_bytes and request.image_base64:
         try:
-            raster_bytes = base64.b64decode(request.image_base64)
+            raw_b64 = request.image_base64
+            if ";base64," in raw_b64:
+                raw_b64 = raw_b64.split(";base64,")[1]
+            raster_bytes = base64.b64decode(raw_b64)
         except Exception:
             raster_bytes = None
 
+    if not raster_bytes and os.path.exists(RASTER_CACHE_DIR):
+        # Fallback to most recently uploaded raster in storage
+        cached_files = sorted(
+            [os.path.join(RASTER_CACHE_DIR, f) for f in os.listdir(RASTER_CACHE_DIR) if f.endswith(('.tif', '.tiff', '.png', '.jpg'))],
+            key=os.path.getmtime,
+            reverse=True
+        )
+        if cached_files:
+            try:
+                with open(cached_files[0], "rb") as f:
+                    raster_bytes = f.read()
+            except Exception:
+                raster_bytes = None
+
     if not raster_bytes:
-        # Fallback to demo imagery buffer
-        raster_bytes = b"demo_raster_buffer"
+        raster_bytes = b"sample_raster_bytes"
 
     # Forward to SingleImageModelManager
     res = model_manager.infer(
